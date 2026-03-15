@@ -1,0 +1,27 @@
+{
+    "name": "xterm-terminal",
+    "version": "1.0.0",
+    "description": "Obsidian Terminal Plugin with @ autocomplete",
+    "main": "main.js",
+    "scripts": {
+        "dev": "node esbuild.config.mjs",
+        "build": "node esbuild.config.mjs production"
+    },
+    "keywords": [
+        "obsidian",
+        "terminal",
+        "xterm"
+    ],
+    "license": "MIT",
+    "devDependencies": {
+        "@types/node": "^20.10.0",
+        "builtin-modules": "^3.3.0",
+        "esbuild": "^0.19.0",
+        "obsidian": "latest",
+        "typescript": "^5.3.0"
+    },
+    "dependencies": {
+        "xterm": "^5.3.0",
+        "xterm-addon-fit": "^0.8.0"
+    }
+}

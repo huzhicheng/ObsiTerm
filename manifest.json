@@ -1,0 +1,10 @@
+{
+	"id": "xterm-terminal",
+	"name": "xTerm",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "在右侧边栏打开终端界面，支持@符号关联vault文件获取绝对路径",
+	"author": "古时的风筝",
+	"authorUrl": "",
+	"isDesktopOnly": true
+}
