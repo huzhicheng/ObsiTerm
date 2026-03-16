@@ -1,5 +1,13 @@
 #!/bin/bash
 
+if [ -z "${BASH_VERSION:-}" ]; then
+    if command -v bash >/dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+    echo "This installer requires bash." >&2
+    exit 1
+fi
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -52,7 +60,7 @@ discover_vaults_from_obsidian_config() {
 
 discover_vaults() {
     discover_vaults_from_obsidian_config | awk '!seen[$0]++' | while IFS= read -r vault_path; do
-        [ -d "$vault_path/.obsidian" ] || continue
+        [ -d "$vault_path" ] || continue
         [ "$(basename "$vault_path")" = "Obsidian Sandbox" ] && continue
         printf '%s\n' "$vault_path"
     done
