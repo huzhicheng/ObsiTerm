@@ -5,6 +5,7 @@ native/pty-helper/target/
 # Build output
 main.js
 resources/pty-helper
+dist-release/
 
 # macOS
 .DS_Store

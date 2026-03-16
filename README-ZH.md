@@ -46,7 +46,7 @@
 
 ### 安装
 
-到 releases 下载对应系统的安装包（目前只有 MacOS）。
+到 [Releases](https://github.com/huzhicheng/ObsiTerm/releases) 下载对应系统的安装包（目前只有 MacOS）。
 
 #### 自动安装
 

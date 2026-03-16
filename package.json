@@ -1,12 +1,13 @@
 {
-    "name": "xterm-terminal",
+    "name": "obsidian-term",
     "version": "1.0.0",
     "description": "Obsidian Terminal Plugin with @ autocomplete",
     "main": "main.js",
     "scripts": {
         "build:helper": "cargo build --release --manifest-path native/pty-helper/Cargo.toml && mkdir -p resources && cp native/pty-helper/target/release/pty-helper resources/pty-helper && chmod +x resources/pty-helper",
         "dev": "node esbuild.config.mjs",
-        "build": "npm run build:helper && node esbuild.config.mjs production"
+        "build": "npm run build:helper && node esbuild.config.mjs production",
+        "release:github": "./scripts/release-github.sh"
     },
     "keywords": [
         "obsidian",

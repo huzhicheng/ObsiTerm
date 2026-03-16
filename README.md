@@ -47,7 +47,7 @@
 
 ### Installation
 
-Download the package for your platform from `releases` (currently macOS only).
+Download the package for your platform from [Releases](https://github.com/huzhicheng/ObsiTerm/releases) (currently macOS only).
 
 #### Automatic installation
 
