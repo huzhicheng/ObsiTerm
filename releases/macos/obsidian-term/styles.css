@@ -1,0 +1,287 @@
+/* Terminal View Container */
+.xterm-terminal-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	padding: 0;
+	overflow: hidden;
+}
+
+.xterm-terminal-container {
+	flex: 1;
+	position: relative;
+	overflow: hidden;
+	background-color: var(--background-primary);
+	border-radius: 0;
+}
+
+/* xterm.js core styles - essential for proper display and scrolling */
+.xterm {
+	cursor: text;
+	position: relative;
+	user-select: none;
+	-ms-user-select: none;
+	-webkit-user-select: none;
+	height: 100%;
+	padding: 2px 3px 3px;
+}
+
+.xterm.focus,
+.xterm:focus {
+	outline: none;
+}
+
+.xterm .xterm-helpers {
+	position: absolute;
+	top: 0;
+	z-index: 5;
+}
+
+/* Hide the xterm helper textarea that appears at top */
+.xterm .xterm-helper-textarea {
+	position: absolute !important;
+	opacity: 0;
+	left: -9999em;
+	top: 0;
+	width: 0;
+	height: 0;
+	z-index: -5;
+	white-space: nowrap;
+	overflow: hidden;
+	resize: none;
+}
+
+.xterm .composition-view {
+	background: #000;
+	color: #FFF;
+	display: none;
+	position: absolute;
+	white-space: nowrap;
+	z-index: 1;
+}
+
+.xterm .composition-view.active {
+	display: block;
+}
+
+.xterm .xterm-viewport {
+	background-color: transparent;
+	overflow-y: scroll;
+	cursor: default;
+	position: absolute;
+	right: 0;
+	left: 0;
+	top: 0;
+	bottom: 0;
+}
+
+.xterm .xterm-screen {
+	position: relative;
+}
+
+.xterm .xterm-screen canvas {
+	position: absolute;
+	left: 0;
+	top: 0;
+}
+
+.xterm .xterm-scroll-area {
+	visibility: hidden;
+}
+
+.xterm-char-measure-element {
+	display: inline-block;
+	visibility: hidden;
+	position: absolute;
+	top: 0;
+	left: -9999em;
+	line-height: normal;
+}
+
+.xterm.enable-mouse-events {
+	cursor: default;
+}
+
+.xterm .xterm-cursor-pointer {
+	cursor: pointer;
+}
+
+.xterm.column-select.focus {
+	cursor: crosshair;
+}
+
+.xterm .xterm-accessibility,
+.xterm .xterm-message {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	z-index: 10;
+	color: transparent;
+}
+
+.xterm .live-region {
+	position: absolute;
+	left: -9999px;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+}
+
+.xterm-dim {
+	opacity: 0.72;
+}
+
+.xterm-underline-1 {
+	text-decoration: underline;
+}
+
+.xterm-underline-2 {
+	text-decoration: double underline;
+}
+
+.xterm-underline-3 {
+	text-decoration: wavy underline;
+}
+
+.xterm-underline-4 {
+	text-decoration: dotted underline;
+}
+
+.xterm-underline-5 {
+	text-decoration: dashed underline;
+}
+
+.xterm-strikethrough {
+	text-decoration: line-through;
+}
+
+.xterm-overline {
+	text-decoration: overline;
+}
+
+/* Custom scrollbar styling */
+.xterm .xterm-viewport::-webkit-scrollbar {
+	width: 10px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb {
+	background: rgba(128, 128, 128, 0.5);
+	border-radius: 5px;
+}
+
+.xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+	background: rgba(128, 128, 128, 0.7);
+}
+
+/* Fix text selection */
+.xterm .xterm-screen {
+	user-select: text !important;
+	-webkit-user-select: text !important;
+}
+
+.xterm .xterm-selection div {
+	position: absolute;
+	background-color: rgba(100, 100, 255, 0.3) !important;
+}
+
+/* Autocomplete Popup */
+.xterm-autocomplete-popup {
+	position: absolute;
+	z-index: 1000;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+	max-height: 250px;
+	overflow-y: auto;
+	min-width: 280px;
+	max-width: 450px;
+	left: 10px;
+	bottom: 10px;
+}
+
+.xterm-autocomplete-item {
+	padding: 10px 12px;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--font-monospace);
+	font-size: 13px;
+	color: var(--text-normal);
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.xterm-autocomplete-item:last-child {
+	border-bottom: none;
+}
+
+.xterm-autocomplete-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.xterm-autocomplete-item.is-selected {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.xterm-autocomplete-icon {
+	font-size: 16px;
+}
+
+.xterm-autocomplete-path {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.xterm-autocomplete-type {
+	font-size: 10px;
+	opacity: 0.6;
+	text-transform: uppercase;
+	padding: 2px 6px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+}
+
+.xterm-font-family-value {
+	margin-top: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: 13px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.xterm-font-suggestion-title {
+	font-size: 14px;
+	color: var(--text-normal);
+}
+
+.xterm-font-current-badge {
+	display: inline-block;
+	margin-left: 6px;
+	padding: 1px 6px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-size: 11px;
+	line-height: 1.4;
+	vertical-align: middle;
+}
+
+.xterm-font-suggestion-meta {
+	margin-top: 4px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
