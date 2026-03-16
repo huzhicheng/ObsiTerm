@@ -49,8 +49,13 @@
 到 [Releases](https://github.com/huzhicheng/ObsiTerm/releases) 下载对应系统的安装包（目前只有 MacOS）。
 
 #### 自动安装
+解压安装包，进入目录
 
-运行目录中的 `install.sh` 脚本，直接在终端运行，会自动找到当前电脑上 Obsidian Vault 并列出，通过空格键选择一个或多个，然后按回车键安装。
+```bash
+chmod +x install.sh
+./install.sh
+```
+会自动找到当前电脑上 Obsidian Vault 并列出，通过空格键选择一个或多个，然后按回车键安装。
 
 <p>
     <img alt="Auto Install" src="./assets/install-1.png">

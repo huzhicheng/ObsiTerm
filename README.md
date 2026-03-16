@@ -51,7 +51,13 @@ Download the package for your platform from [Releases](https://github.com/huzhic
 
 #### Automatic installation
 
-Run the `install.sh` script in the release directory from Terminal. It will automatically find Obsidian vaults on the current machine, list them, and let you select one or more vaults with the space key, then press Enter to install.
+Unzip the package and enter the directory
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+It will automatically find Obsidian vaults on the current machine, list them, and let you select one or more vaults with the space key, then press Enter to install.
 
 <p>
     <img alt="Auto Install" src="./assets/install-1.png">
