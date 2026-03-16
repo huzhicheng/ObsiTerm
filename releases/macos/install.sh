@@ -299,8 +299,8 @@ main() {
     fi
 
     for vault_path in "${vault_paths[@]}"; do
-        if [ ! -d "$vault_path/.obsidian" ]; then
-            echo "⚠️  Skipping non-vault path: $vault_path"
+        if [ ! -d "$vault_path" ]; then
+            echo "⚠️  Skipping missing path: $vault_path"
             continue
         fi
 
