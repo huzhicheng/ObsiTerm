@@ -56,38 +56,65 @@ if (!existsSync(helperSourcePath)) {
     throw new Error(`Missing PTY helper: ${helperSourcePath}`);
 }
 
-copyPluginBundle(releaseBundleDir);
-console.log(`Release bundle refreshed: ${releaseBundleDir}`);
+try {
+    copyPluginBundle(releaseBundleDir);
+    console.log(`Release bundle refreshed: ${releaseBundleDir}`);
 
-if (!options.releaseOnly && options.target) {
-    copyPluginBundle(options.target);
-    console.log(`Local plugin deployed: ${options.target}`);
-} else if (!options.releaseOnly) {
-    console.log('Local plugin deploy skipped. Set OBSIDIAN_PLUGIN_DIR or pass --target to enable it.');
+    if (!options.releaseOnly && options.target) {
+        copyPluginBundle(options.target);
+        console.log(`Local plugin deployed: ${options.target}`);
+    } else if (!options.releaseOnly) {
+        console.log('Local plugin deploy skipped. Set OBSIDIAN_PLUGIN_DIR or pass --target to enable it.');
+    }
+} catch (error) {
+    reportDeployError(error);
+    process.exit(1);
 }
 
 function copyPluginBundle(destinationDir) {
     mkdirSync(destinationDir, { recursive: true });
 
     for (const entry of ['resources', 'themes']) {
-        rmSync(path.join(destinationDir, entry), { recursive: true, force: true });
+        const entryPath = path.join(destinationDir, entry);
+        try {
+            rmSync(entryPath, { recursive: true, force: true });
+        } catch (error) {
+            throw wrapFileError(`Failed to remove ${entryPath}`, error, entryPath);
+        }
     }
 
-    mkdirSync(path.join(destinationDir, 'resources'), { recursive: true });
-    mkdirSync(path.join(destinationDir, 'themes'), { recursive: true });
+    try {
+        mkdirSync(path.join(destinationDir, 'resources'), { recursive: true });
+        mkdirSync(path.join(destinationDir, 'themes'), { recursive: true });
+    } catch (error) {
+        throw wrapFileError(`Failed to create bundle directories in ${destinationDir}`, error, destinationDir);
+    }
 
     for (const file of bundleFiles) {
-        cpSync(path.join(rootDir, file), path.join(destinationDir, file));
+        const sourcePath = path.join(rootDir, file);
+        const targetPath = path.join(destinationDir, file);
+        try {
+            cpSync(sourcePath, targetPath);
+        } catch (error) {
+            throw wrapFileError(`Failed to copy ${sourcePath} -> ${targetPath}`, error, targetPath);
+        }
     }
 
-    cpSync(helperSourcePath, path.join(destinationDir, 'resources', helperFileName));
+    const helperTargetPath = path.join(destinationDir, 'resources', helperFileName);
+    try {
+        cpSync(helperSourcePath, helperTargetPath);
+    } catch (error) {
+        throw wrapFileError(`Failed to copy ${helperSourcePath} -> ${helperTargetPath}`, error, helperTargetPath);
+    }
 
     for (const entry of readdirSync(themesSourcePath)) {
-        cpSync(
-            path.join(themesSourcePath, entry),
-            path.join(destinationDir, 'themes', entry),
-            { recursive: true }
-        );
+        const sourcePath = path.join(themesSourcePath, entry);
+        const targetPath = path.join(destinationDir, 'themes', entry);
+        try {
+            cpSync(sourcePath, targetPath, { recursive: true });
+        } catch (error) {
+            throw wrapFileError(`Failed to copy ${sourcePath} -> ${targetPath}`, error, targetPath);
+        }
     }
 }
 
@@ -122,4 +149,57 @@ Options:
   --release-only Refresh releases/<platform>/obsidian-term only
   --target <dir> Deploy to a specific Obsidian plugin directory
   -h, --help     Show help`);
+}
+
+function wrapFileError(message, error, filePath) {
+    const wrappedError = error instanceof Error ? error : new Error(String(error));
+    wrappedError.message = `${message}: ${wrappedError.message}`;
+    wrappedError.cause = error;
+    wrappedError.filePath = filePath;
+    return wrappedError;
+}
+
+function reportDeployError(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const code = getErrorCode(error);
+    const filePath = getErrorFilePath(error);
+
+    console.error(`Deploy failed: ${message}`);
+
+    if (filePath) {
+        console.error(`Path: ${filePath}`);
+    }
+
+    if (process.platform === 'win32' && isLockError(code)) {
+        console.error('Windows file locking blocked deployment.');
+        console.error('Close Obsidian and terminate any leftover pty-helper.exe processes, then run npm run deploy again.');
+    }
+}
+
+function getErrorCode(error) {
+    if (!error || typeof error !== 'object' || !('code' in error)) {
+        return '';
+    }
+
+    return typeof error.code === 'string' ? error.code : String(error.code);
+}
+
+function getErrorFilePath(error) {
+    if (!error || typeof error !== 'object') {
+        return '';
+    }
+
+    if ('filePath' in error && typeof error.filePath === 'string') {
+        return error.filePath;
+    }
+
+    if ('path' in error && typeof error.path === 'string') {
+        return error.path;
+    }
+
+    return '';
+}
+
+function isLockError(code) {
+    return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES';
 }
