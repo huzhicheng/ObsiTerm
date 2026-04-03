@@ -5,6 +5,7 @@ native/pty-helper/target/
 # Build output
 main.js
 resources/pty-helper
+resources/pty-helper.exe
 dist-release/
 
 # macOS
@@ -19,3 +20,4 @@ pnpm-debug.log*
 # Local temp files
 *.tmp
 *.temp
+data.json

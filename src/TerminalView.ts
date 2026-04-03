@@ -144,7 +144,8 @@ export class TerminalView extends ItemView {
             ? (path.isAbsolute(manifestDir) ? manifestDir : path.join(vaultPath, manifestDir))
             : path.join(vaultPath, '.obsidian', 'plugins', this.plugin.manifest.id);
 
-        return path.join(pluginDir, 'resources', 'pty-helper');
+        const helperName = process.platform === 'win32' ? 'pty-helper.exe' : 'pty-helper';
+        return path.join(pluginDir, 'resources', helperName);
     }
 
     /**
@@ -152,9 +153,7 @@ export class TerminalView extends ItemView {
      */
     private async startPtyHelper(): Promise<void> {
         const ptyHelperPath = this.getPtyHelperPath();
-
-        // GUI apps can inherit a stale SHELL env; prefer the account's actual login shell.
-        const userShell = os.userInfo().shell || process.env.SHELL || '/bin/bash';
+        const userShell = this.getDefaultShell();
 
         try {
             if (!fs.existsSync(ptyHelperPath)) {
@@ -232,6 +231,55 @@ export class TerminalView extends ItemView {
             this.terminal?.writeln(`\x1b[31mFailed to start terminal: ${(error as Error).message}\x1b[0m`);
             this.terminal?.writeln('\x1b[33mMake sure the Rust PTY helper is built and deployed.\x1b[0m');
         }
+    }
+
+    private getDefaultShell(): string {
+        if (process.platform === 'win32') {
+            const preferredShells = [
+                process.env.OBSITERM_SHELL,
+                process.env.COMSPEC,
+                'pwsh.exe',
+                'powershell.exe',
+                'cmd.exe'
+            ];
+
+            for (const shellPath of preferredShells) {
+                if (!shellPath) continue;
+                if (this.commandExists(shellPath)) {
+                    return shellPath;
+                }
+            }
+
+            return 'cmd.exe';
+        }
+
+        // GUI apps can inherit a stale SHELL env; prefer the account's actual login shell.
+        return os.userInfo().shell || process.env.SHELL || '/bin/bash';
+    }
+
+    private commandExists(command: string): boolean {
+        if (path.isAbsolute(command)) {
+            return fs.existsSync(command);
+        }
+
+        const pathEnv = process.env.PATH ?? '';
+        const pathEntries = pathEnv.split(path.delimiter).filter(Boolean);
+        const extensions = process.platform === 'win32'
+            ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+                .split(';')
+                .filter(Boolean)
+            : [''];
+
+        for (const entry of pathEntries) {
+            for (const ext of extensions) {
+                const candidate = path.join(entry, process.platform === 'win32' && path.extname(command) ? command : `${command}${ext}`);
+                if (fs.existsSync(candidate)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
