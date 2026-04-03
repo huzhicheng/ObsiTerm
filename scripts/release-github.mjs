@@ -67,7 +67,7 @@ if (!options.skipBuild) {
         throw new Error(`Cannot build ${options.platform} assets on ${mapPlatform(process.platform)}. Use --skip-build to package an existing bundle.`);
     }
 
-    runCommand(getNodeCommand(), ['scripts/deploy.mjs', '--release-only'], rootDir);
+    runCommand(process.execPath, ['scripts/deploy.mjs', '--release-only'], rootDir);
 }
 
 if (!existsSync(manifestPath)) {
