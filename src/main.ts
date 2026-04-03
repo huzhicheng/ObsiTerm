@@ -88,7 +88,10 @@ export default class XTermTerminalPlugin extends Plugin {
             autocompleteTrigger: typeof rawData.autocompleteTrigger === 'string' && rawData.autocompleteTrigger.trim().length > 0
                 ? rawData.autocompleteTrigger.trim()
                 : DEFAULT_SETTINGS.autocompleteTrigger,
-            shellPath: typeof rawData.shellPath === 'string' ? rawData.shellPath.trim() : DEFAULT_SETTINGS.shellPath
+            shellPath: typeof rawData.shellPath === 'string' ? rawData.shellPath.trim() : DEFAULT_SETTINGS.shellPath,
+            initialWorkingDirectory: typeof rawData.initialWorkingDirectory === 'string'
+                ? rawData.initialWorkingDirectory.trim()
+                : DEFAULT_SETTINGS.initialWorkingDirectory
         };
 
         this.bundledThemes = await loadBundledGhosttyThemes(this.getThemeDirectoryPath());

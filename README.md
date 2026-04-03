@@ -23,7 +23,7 @@
 - Works well with Claude Code, Codex, Gemini CLI, and other terminal tools
 - `@` autocomplete for vault file and folder absolute paths
 - Ghostty theme compatibility plus built-in themes
-- Configurable font, font size, and autocomplete trigger
+- Configurable font, font size, autocomplete trigger, shell command, and initial directory
 - Paste large text blocks or images as temporary file paths
 
 ## Installation
@@ -121,6 +121,19 @@ You can configure:
 - font size
 - font family
 - autocomplete trigger
+- shell command override
+- initial directory
+
+### Initial directory
+
+Use the `Initial Directory` setting when you want new terminal tabs to start somewhere other than the user home directory.
+
+- Leave it empty to start in the vault root
+- Use a relative path such as `.` or `./scripts` to resolve from the vault root
+- Use an absolute path such as `E:\Projects` or `/Users/name/Projects` to start elsewhere
+- `~`, `~/...`, and `~\...` expand to the current user's home directory
+
+If the configured directory does not exist, ObsiTerm falls back to the vault root.
 
 ### Open terminal
 

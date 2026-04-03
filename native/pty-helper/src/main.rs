@@ -5,6 +5,7 @@ mod platform {
     use std::fs::File;
     use std::io::{self, Read, Write};
     use std::os::windows::io::{FromRawHandle, RawHandle};
+    use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
 
     pub fn run() -> Result<(), String> {
@@ -18,6 +19,9 @@ mod platform {
         let mut command = CommandBuilder::new(shell);
         for arg in shell_args {
             command.arg(arg);
+        }
+        if let Some(initial_cwd) = determine_initial_cwd() {
+            command.cwd(initial_cwd);
         }
 
         let mut child = pair
@@ -72,6 +76,16 @@ mod platform {
             pixel_width: 0,
             pixel_height: 0,
         }
+    }
+
+    fn determine_initial_cwd() -> Option<PathBuf> {
+        let value = env::var("OBSITERM_INITIAL_CWD").ok()?;
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        Some(PathBuf::from(trimmed))
     }
 
     fn spawn_stdin_forwarder(mut writer: Box<dyn Write + Send>) {

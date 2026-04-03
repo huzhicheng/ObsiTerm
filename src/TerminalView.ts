@@ -155,6 +155,7 @@ export class TerminalView extends ItemView {
     private async startPtyHelper(): Promise<void> {
         const ptyHelperPath = this.getPtyHelperPath();
         const userShell = this.getDefaultShell();
+        const workingDirectory = this.getInitialWorkingDirectory();
         this.shellDisplayName = userShell;
 
         try {
@@ -166,11 +167,12 @@ export class TerminalView extends ItemView {
             // We'll use process.send or a workaround with stdio
 
             this.ptyProcess = spawn(ptyHelperPath, [userShell], {
-                cwd: this.scanner.getVaultPath(),
+                cwd: workingDirectory,
                 env: {
                     ...process.env,
                     TERM: 'xterm-256color',
                     LANG: process.env.LANG || 'en_US.UTF-8',
+                    OBSITERM_INITIAL_CWD: workingDirectory,
                     XTERM_INITIAL_COLS: String(this.terminal?.cols ?? 0),
                     XTERM_INITIAL_ROWS: String(this.terminal?.rows ?? 0),
                 },
@@ -179,7 +181,7 @@ export class TerminalView extends ItemView {
 
             this.lastResizeCols = this.terminal?.cols ?? null;
             this.lastResizeRows = this.terminal?.rows ?? null;
-            this.writeLaunchBanner(userShell);
+            this.writeLaunchBanner(userShell, workingDirectory);
 
             // Get fd 3 for resize events
             // @ts-ignore - stdio[3] exists when we specify 4 pipes
@@ -231,7 +233,7 @@ export class TerminalView extends ItemView {
             setTimeout(() => this.sendResize(), 100);
 
         } catch (error) {
-            this.writeStartupFailure(error as Error, userShell, ptyHelperPath);
+            this.writeStartupFailure(error as Error, userShell, ptyHelperPath, workingDirectory);
         }
     }
 
@@ -288,19 +290,57 @@ export class TerminalView extends ItemView {
         return false;
     }
 
-    private writeLaunchBanner(shellPath: string): void {
+    private writeLaunchBanner(shellPath: string, workingDirectory: string): void {
         const shellName = path.basename(shellPath);
         const trigger = this.getAutocompleteTrigger();
         this.terminal?.writeln(`\x1b[90m[ObsiTerm] shell: ${shellName} | path trigger: ${trigger}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[90m[ObsiTerm] cwd: ${workingDirectory}\x1b[0m`);
         this.terminal?.writeln('\x1b[90mUse @ path autocomplete, or paste an image to insert a temp file path.\x1b[0m');
     }
 
-    private writeStartupFailure(error: Error, shellPath: string, ptyHelperPath: string): void {
+    private writeStartupFailure(error: Error, shellPath: string, ptyHelperPath: string, workingDirectory: string): void {
         this.terminal?.writeln(`\x1b[31mFailed to start terminal: ${error.message}\x1b[0m`);
         this.terminal?.writeln(`\x1b[33mShell: ${shellPath}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[33mWorking directory: ${workingDirectory}\x1b[0m`);
         this.terminal?.writeln(`\x1b[33mHelper: ${ptyHelperPath}\x1b[0m`);
         this.terminal?.writeln('\x1b[33mCheck the shell setting, rebuild the helper, or redeploy the plugin.\x1b[0m');
         new Notice(`ObsiTerm failed to start terminal: ${error.message}`, 5000);
+    }
+
+    private getInitialWorkingDirectory(): string {
+        const vaultPath = this.scanner.getVaultPath();
+        const configuredPath = this.plugin.settings.initialWorkingDirectory.trim();
+        if (!configuredPath) {
+            return vaultPath;
+        }
+
+        const expandedPath = this.expandHomeDirectory(configuredPath);
+        const resolvedPath = path.isAbsolute(expandedPath)
+            ? expandedPath
+            : path.resolve(vaultPath, expandedPath);
+
+        try {
+            const stats = fs.statSync(resolvedPath);
+            if (stats.isDirectory()) {
+                return resolvedPath;
+            }
+        } catch {
+            // Fall back to the vault root when the configured path does not exist.
+        }
+
+        return vaultPath;
+    }
+
+    private expandHomeDirectory(targetPath: string): string {
+        if (targetPath === '~') {
+            return os.homedir();
+        }
+
+        if (targetPath.startsWith('~/') || targetPath.startsWith('~\\')) {
+            return path.join(os.homedir(), targetPath.slice(2));
+        }
+
+        return targetPath;
     }
 
     /**
