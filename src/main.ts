@@ -123,6 +123,26 @@ export default class XTermTerminalPlugin extends Plugin {
                 this.getTargetTerminalView()?.sendContextSummaryToTerminal(summary);
             }
         });
+
+        this.addCommand({
+            id: 'send-current-selection-as-claude-prompt',
+            name: 'Send Current Selection As Claude Prompt',
+            callback: () => {
+                const prompt = this.contextService?.buildClaudePromptForSelection() ?? '';
+                if (!prompt) return;
+                this.getTargetTerminalView()?.sendClaudePromptToTerminal(prompt);
+            }
+        });
+
+        this.addCommand({
+            id: 'send-active-note-as-claude-prompt',
+            name: 'Send Active Note As Claude Prompt',
+            callback: () => {
+                const prompt = this.contextService?.buildClaudePromptForActiveNote() ?? '';
+                if (!prompt) return;
+                this.getTargetTerminalView()?.sendClaudePromptToTerminal(prompt);
+            }
+        });
     }
 
     async onunload(): Promise<void> {

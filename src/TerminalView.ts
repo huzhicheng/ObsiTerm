@@ -436,6 +436,11 @@ export class TerminalView extends ItemView {
         this.sendTextToTerminal(this.formatContextSummaryPayload(summary));
     }
 
+    public sendClaudePromptToTerminal(prompt: string): void {
+        if (!prompt) return;
+        this.sendTextToTerminal(this.formatClaudePromptPayload(prompt));
+    }
+
     /**
      * Handle system paste so text goes through xterm's paste path and
      * clipboard images become temporary files that terminal tools can read.
@@ -985,6 +990,22 @@ export class TerminalView extends ItemView {
         }
 
         return `${summary}\n`;
+    }
+
+    private formatClaudePromptPayload(prompt: string): string {
+        if (this.isAgentCliInForeground()) {
+            return `${prompt}\r\n`;
+        }
+
+        if (this.isPowerShellShell()) {
+            return `$obsitermClaudePrompt = @'\r\n${this.normalizeForPowerShell(prompt)}\r\n'@\r\n`;
+        }
+
+        if (this.isPosixShell()) {
+            return `export OBSITERM_CLAUDE_PROMPT=$(cat <<'EOF'\n${prompt}\nEOF\n)\n`;
+        }
+
+        return `${prompt}\n`;
     }
 
     private isPowerShellShell(): boolean {

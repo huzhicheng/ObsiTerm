@@ -181,6 +181,8 @@ Command palette helpers:
 - `ObsiTerm: Send Current Selection To Terminal`
 - `ObsiTerm: Send Active Note Path To Terminal`
 - `ObsiTerm: Send Obsidian Context Summary To Terminal`
+- `ObsiTerm: Send Current Selection As Claude Prompt`
+- `ObsiTerm: Send Active Note As Claude Prompt`
 
 ### Terminal context status bar
 

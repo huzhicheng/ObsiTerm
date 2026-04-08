@@ -239,6 +239,42 @@ export class ObsidianContextService {
         return parts.join('\n');
     }
 
+    buildClaudePromptForSelection(snapshot = this.getLatestSelectionSnapshot() ?? this.getLatestSnapshot()): string {
+        if (!snapshot.selection) {
+            return '';
+        }
+
+        const parts = [
+            '请基于下面这段我当前在 Obsidian 中选中的文本来回答。',
+            '如果信息不足，请明确说明还缺什么，不要假设未给出的上下文。',
+            '',
+            `当前笔记: ${snapshot.activeFilePath ?? '(unknown)'}`,
+            `选中行数: ${snapshot.selectedLineCount}`,
+            '',
+            '选中文本：',
+            snapshot.selection,
+            '',
+        ];
+
+        return parts.join('\n');
+    }
+
+    buildClaudePromptForActiveNote(snapshot = this.getLatestSnapshot()): string {
+        if (!snapshot.activeFileAbsolutePath) {
+            return '';
+        }
+
+        const parts = [
+            '请基于我当前在 Obsidian 中打开的笔记继续协助我。',
+            '下面是当前笔记路径；如果需要完整内容，请明确告诉我下一步该读取什么。',
+            '',
+            `当前笔记路径: ${snapshot.activeFileAbsolutePath}`,
+            '',
+        ];
+
+        return parts.join('\n');
+    }
+
     private getVaultPath(): string {
         const adapter = this.plugin.app.vault.adapter as { basePath?: string };
         return adapter.basePath ?? process.cwd();
