@@ -157,6 +157,9 @@ ObsiTerm now writes the active note context into runtime files that terminal too
 - `OBSITERM_CONTEXT_FILE`: JSON snapshot of the current note, cursor, and selection
 - `OBSITERM_SELECTION_FILE`: plain text file containing only the current selection
 - `OBSITERM_ACTIVE_FILE`: absolute path of the active note when a terminal tab starts
+- `OBSITERM_CONTEXT_BRIDGE_URL`: local read-only HTTP bridge for terminal tools
+- `OBSITERM_CONTEXT_BRIDGE_TOKEN`: bearer token for the local HTTP bridge
+- `OBSITERM_CONTEXT_MCP_CONFIG_FILE`: runtime JSON file containing a ready-to-use MCP config for the current session
 
 The JSON file is updated while you switch notes, edit, or change the current selection in Obsidian.
 
@@ -172,6 +175,87 @@ On Windows PowerShell:
 ```powershell
 Get-Content $env:OBSITERM_CONTEXT_FILE
 Get-Content $env:OBSITERM_SELECTION_FILE
+```
+
+### Context bridge API
+
+ObsiTerm also exposes a local read-only HTTP bridge so terminal tools can query the current note context on demand instead of only reading files.
+
+Available endpoints:
+
+- `OBSITERM_CONTEXT_ENDPOINT`
+- `OBSITERM_SELECTION_ENDPOINT`
+- `OBSITERM_ACTIVE_NOTE_ENDPOINT`
+- `OBSITERM_SELECTION_PROMPT_ENDPOINT`
+- `OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT`
+- `OBSITERM_CONTEXT_CLI`
+- `OBSITERM_CONTEXT_MCP`
+
+PowerShell example:
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:OBSITERM_CONTEXT_BRIDGE_TOKEN" }
+Invoke-RestMethod -Headers $headers $env:OBSITERM_SELECTION_ENDPOINT
+Invoke-RestMethod -Headers $headers $env:OBSITERM_CONTEXT_ENDPOINT
+```
+
+POSIX shell example:
+
+```bash
+curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_SELECTION_ENDPOINT"
+curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_CONTEXT_ENDPOINT"
+```
+
+Prompt endpoints return JSON with a `prompt` field, which is useful when you want Claude Code or another agent CLI to fetch the current Obsidian context on demand.
+
+CLI examples:
+
+```powershell
+node $env:OBSITERM_CONTEXT_CLI selection
+node $env:OBSITERM_CONTEXT_CLI context
+node $env:OBSITERM_CONTEXT_CLI selection-prompt --text
+node $env:OBSITERM_CONTEXT_CLI mcp-config
+```
+
+### MCP server for agent CLIs
+
+ObsiTerm also bundles a minimal stdio MCP server that proxies the local context bridge. This makes the current note and selection available as tools for Claude Code, Codex, and other MCP-capable terminal clients.
+
+Available MCP tools:
+
+- `get_obsidian_context`
+- `get_current_selection`
+- `get_active_note`
+- `get_selection_prompt`
+- `get_active_note_prompt`
+
+PowerShell inspection:
+
+```powershell
+$env:OBSITERM_CONTEXT_MCP
+$env:OBSITERM_CONTEXT_BRIDGE_TOKEN
+Get-Content -Raw $env:OBSITERM_CONTEXT_MCP_CONFIG_FILE
+```
+
+Example MCP config:
+
+```json
+{
+  "mcpServers": {
+    "obsiterm": {
+      "command": "node",
+      "args": ["E:/Obsidian/obsidian_private/.obsidian/plugins/ObsiTerm/resources/obsiterm-mcp.mjs"],
+      "env": {
+        "OBSITERM_CONTEXT_BRIDGE_TOKEN": "...",
+        "OBSITERM_CONTEXT_ENDPOINT": "...",
+        "OBSITERM_SELECTION_ENDPOINT": "...",
+        "OBSITERM_ACTIVE_NOTE_ENDPOINT": "...",
+        "OBSITERM_SELECTION_PROMPT_ENDPOINT": "...",
+        "OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT": "..."
+      }
+    }
+  }
+}
 ```
 
 Command palette helpers:
@@ -192,7 +276,6 @@ Inspired by Claude Code's IDE footer, each terminal view now shows a lightweight
 - It shows the active note path
 - When Claude Code, Codex CLI, or Gemini CLI is detected in the foreground, the hint switches to `? for shortcuts`
 - It includes `Send Selection` and `Send Note` buttons for quickly sending Claude-style prompts without opening the command palette
-- Right-clicking inside the terminal also opens a context menu with the same Claude prompt actions
 
 This is meant to make the Obsidian-side context visible without forcing terminal tools to read files manually first.
 

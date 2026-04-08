@@ -2,6 +2,8 @@ import { MarkdownView, Notice, normalizePath, type Editor, type TFile } from 'ob
 import type XTermTerminalPlugin from './main';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as http from 'http';
+import { randomBytes } from 'crypto';
 
 export interface ObsidianContextSnapshot {
     updatedAt: string;
@@ -26,6 +28,17 @@ export interface ObsidianContextRuntimePaths {
     runtimeDir: string;
     contextFile: string;
     selectionFile: string;
+    mcpConfigFile: string;
+}
+
+export interface ObsidianContextBridgeInfo {
+    baseUrl: string;
+    token: string;
+    contextUrl: string;
+    selectionUrl: string;
+    activeNoteUrl: string;
+    selectionPromptUrl: string;
+    activeNotePromptUrl: string;
 }
 
 export class ObsidianContextService {
@@ -33,9 +46,12 @@ export class ObsidianContextService {
     private pollTimer: number | null = null;
     private lastSerializedContext = '';
     private lastSelection = '';
+    private lastComparableContext = '';
     private lastSnapshot: ObsidianContextSnapshot | null = null;
     private lastSelectionSnapshot: ObsidianContextSnapshot | null = null;
     private listeners = new Set<(snapshot: ObsidianContextSnapshot) => void>();
+    private bridgeServer: http.Server | null = null;
+    private bridgeInfo: ObsidianContextBridgeInfo | null = null;
     private static readonly UTF8_BOM = '\uFEFF';
 
     constructor(plugin: XTermTerminalPlugin) {
@@ -43,6 +59,7 @@ export class ObsidianContextService {
     }
 
     async start(): Promise<void> {
+        await this.startBridgeServer();
         await this.captureSnapshotFromActiveMarkdownView();
 
         this.plugin.registerEvent(
@@ -72,6 +89,7 @@ export class ObsidianContextService {
                 window.clearInterval(this.pollTimer);
                 this.pollTimer = null;
             }
+            this.stopBridgeServer();
         });
     }
 
@@ -86,7 +104,8 @@ export class ObsidianContextService {
         return {
             runtimeDir,
             contextFile: path.join(runtimeDir, 'obsidian-context.json'),
-            selectionFile: path.join(runtimeDir, 'obsidian-selection.txt')
+            selectionFile: path.join(runtimeDir, 'obsidian-selection.txt'),
+            mcpConfigFile: path.join(runtimeDir, 'obsiterm-mcp.json')
         };
     }
 
@@ -118,6 +137,10 @@ export class ObsidianContextService {
         }
 
         return this.lastSelectionSnapshot;
+    }
+
+    getBridgeInfo(): ObsidianContextBridgeInfo | null {
+        return this.bridgeInfo;
     }
 
     subscribe(listener: (snapshot: ObsidianContextSnapshot) => void): () => void {
@@ -183,24 +206,33 @@ export class ObsidianContextService {
 
     async writeContextSnapshot(snapshot = this.getLatestSnapshot()): Promise<void> {
         const runtimePaths = this.getRuntimePaths();
-        const serializedContext = `${JSON.stringify(snapshot, null, 2)}\n`;
-        const serializedContextForDisk = `${ObsidianContextService.UTF8_BOM}${serializedContext}`;
-        const selectionForDisk = `${ObsidianContextService.UTF8_BOM}${snapshot.selection}`;
-
-        if (serializedContext === this.lastSerializedContext && snapshot.selection === this.lastSelection) {
+        const comparableContext = this.serializeComparableSnapshot(snapshot);
+        if (comparableContext === this.lastComparableContext && snapshot.selection === this.lastSelection) {
             return;
         }
+
+        const snapshotToPersist: ObsidianContextSnapshot = {
+            ...snapshot,
+            updatedAt: new Date().toISOString(),
+        };
+        const serializedContext = `${JSON.stringify(snapshotToPersist, null, 2)}\n`;
+        const serializedContextForDisk = `${ObsidianContextService.UTF8_BOM}${serializedContext}`;
+        const selectionForDisk = `${ObsidianContextService.UTF8_BOM}${snapshotToPersist.selection}`;
+        const mcpConfigForDisk = `${ObsidianContextService.UTF8_BOM}${JSON.stringify(this.buildMcpConfig(), null, 2)}\n`;
 
         await fs.promises.mkdir(runtimePaths.runtimeDir, { recursive: true });
         await fs.promises.writeFile(runtimePaths.contextFile, serializedContextForDisk, 'utf8');
         await fs.promises.writeFile(runtimePaths.selectionFile, selectionForDisk, 'utf8');
+        await fs.promises.writeFile(runtimePaths.mcpConfigFile, mcpConfigForDisk, 'utf8');
 
         this.lastSerializedContext = serializedContext;
-        this.lastSelection = snapshot.selection;
-        if (snapshot.hasSelection) {
-            this.lastSelectionSnapshot = snapshot;
+        this.lastComparableContext = comparableContext;
+        this.lastSelection = snapshotToPersist.selection;
+        this.lastSnapshot = snapshotToPersist;
+        if (snapshotToPersist.hasSelection) {
+            this.lastSelectionSnapshot = snapshotToPersist;
         }
-        this.notifyListeners(snapshot);
+        this.notifyListeners(snapshotToPersist);
     }
 
     async copyContextFilePath(): Promise<void> {
@@ -296,5 +328,172 @@ export class ObsidianContextService {
         }
 
         return selection.split(/\r?\n/).length;
+    }
+
+    private serializeComparableSnapshot(snapshot: ObsidianContextSnapshot): string {
+        const { updatedAt: _updatedAt, ...stableFields } = snapshot;
+        return JSON.stringify(stableFields);
+    }
+
+    private async startBridgeServer(): Promise<void> {
+        if (this.bridgeServer && this.bridgeInfo) {
+            return;
+        }
+
+        const token = randomBytes(18).toString('hex');
+        this.bridgeServer = http.createServer((request, response) => {
+            void this.handleBridgeRequest(request, response, token);
+        });
+
+        await new Promise<void>((resolve, reject) => {
+            const server = this.bridgeServer;
+            if (!server) {
+                reject(new Error('Context bridge server was not initialized.'));
+                return;
+            }
+
+            server.once('error', reject);
+            server.listen(0, '127.0.0.1', () => {
+                server.off('error', reject);
+                resolve();
+            });
+        });
+
+        const address = this.bridgeServer.address();
+        if (!address || typeof address === 'string') {
+            throw new Error('Failed to resolve context bridge server address.');
+        }
+
+        const baseUrl = `http://127.0.0.1:${address.port}`;
+        this.bridgeInfo = {
+            baseUrl,
+            token,
+            contextUrl: `${baseUrl}/context`,
+            selectionUrl: `${baseUrl}/selection`,
+            activeNoteUrl: `${baseUrl}/active-note`,
+            selectionPromptUrl: `${baseUrl}/prompts/selection`,
+            activeNotePromptUrl: `${baseUrl}/prompts/active-note`,
+        };
+    }
+
+    private stopBridgeServer(): void {
+        this.bridgeInfo = null;
+        if (!this.bridgeServer) {
+            return;
+        }
+
+        const server = this.bridgeServer;
+        this.bridgeServer = null;
+        server.close();
+    }
+
+    private async handleBridgeRequest(
+        request: http.IncomingMessage,
+        response: http.ServerResponse,
+        token: string
+    ): Promise<void> {
+        try {
+            if (!this.isAuthorizedBridgeRequest(request, token)) {
+                this.sendBridgeJson(response, 401, { error: 'Unauthorized' });
+                return;
+            }
+
+            const method = request.method ?? 'GET';
+            if (method !== 'GET') {
+                this.sendBridgeJson(response, 405, { error: 'Method not allowed' });
+                return;
+            }
+
+            const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+            switch (requestUrl.pathname) {
+                case '/health':
+                    this.sendBridgeJson(response, 200, { ok: true });
+                    return;
+                case '/context':
+                    this.sendBridgeJson(response, 200, this.getLatestSnapshot());
+                    return;
+                case '/selection': {
+                    const snapshot = this.getLatestSelectionSnapshot() ?? this.getLatestSnapshot();
+                    this.sendBridgeJson(response, 200, {
+                        updatedAt: snapshot.updatedAt,
+                        activeFilePath: snapshot.activeFilePath,
+                        activeFileAbsolutePath: snapshot.activeFileAbsolutePath,
+                        selection: snapshot.selection,
+                        hasSelection: snapshot.hasSelection,
+                        selectedLineCount: snapshot.selectedLineCount,
+                    });
+                    return;
+                }
+                case '/active-note': {
+                    const snapshot = this.getLatestSnapshot();
+                    this.sendBridgeJson(response, 200, {
+                        updatedAt: snapshot.updatedAt,
+                        activeFilePath: snapshot.activeFilePath,
+                        activeFileAbsolutePath: snapshot.activeFileAbsolutePath,
+                        currentLine: snapshot.currentLine,
+                    });
+                    return;
+                }
+                case '/prompts/selection': {
+                    const snapshot = this.getLatestSelectionSnapshot() ?? this.getLatestSnapshot();
+                    this.sendBridgeJson(response, 200, {
+                        prompt: this.buildClaudePromptForSelection(snapshot),
+                    });
+                    return;
+                }
+                case '/prompts/active-note': {
+                    const snapshot = this.getLatestSnapshot();
+                    this.sendBridgeJson(response, 200, {
+                        prompt: this.buildClaudePromptForActiveNote(snapshot),
+                    });
+                    return;
+                }
+                default:
+                    this.sendBridgeJson(response, 404, { error: 'Not found' });
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.sendBridgeJson(response, 500, { error: message });
+        }
+    }
+
+    private isAuthorizedBridgeRequest(request: http.IncomingMessage, token: string): boolean {
+        const authHeader = request.headers.authorization ?? '';
+        if (authHeader === `Bearer ${token}`) {
+            return true;
+        }
+
+        const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+        return requestUrl.searchParams.get('token') === token;
+    }
+
+    private sendBridgeJson(response: http.ServerResponse, statusCode: number, payload: unknown): void {
+        const body = JSON.stringify(payload, null, 2);
+        response.writeHead(statusCode, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+        });
+        response.end(body);
+    }
+
+    private buildMcpConfig(): { mcpServers: Record<string, unknown> } {
+        const bridgeInfo = this.bridgeInfo;
+        const runtimePaths = this.getRuntimePaths();
+        return {
+            mcpServers: {
+                obsiterm: {
+                    command: 'node',
+                    args: [path.join(path.dirname(runtimePaths.contextFile), '..', 'resources', 'obsiterm-mcp.mjs')],
+                    env: {
+                        OBSITERM_CONTEXT_BRIDGE_TOKEN: bridgeInfo?.token ?? '',
+                        OBSITERM_CONTEXT_ENDPOINT: bridgeInfo?.contextUrl ?? '',
+                        OBSITERM_SELECTION_ENDPOINT: bridgeInfo?.selectionUrl ?? '',
+                        OBSITERM_ACTIVE_NOTE_ENDPOINT: bridgeInfo?.activeNoteUrl ?? '',
+                        OBSITERM_SELECTION_PROMPT_ENDPOINT: bridgeInfo?.selectionPromptUrl ?? '',
+                        OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT: bridgeInfo?.activeNotePromptUrl ?? '',
+                    },
+                },
+            },
+        };
     }
 }

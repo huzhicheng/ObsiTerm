@@ -250,12 +250,6 @@
 	background: rgba(128, 128, 128, 0.7);
 }
 
-/* Fix text selection */
-.xterm .xterm-screen {
-	user-select: text !important;
-	-webkit-user-select: text !important;
-}
-
 .xterm .xterm-selection div {
 	position: absolute;
 	background-color: rgba(100, 100, 255, 0.3) !important;

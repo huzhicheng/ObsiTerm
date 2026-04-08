@@ -157,6 +157,8 @@ ObsiTerm 会把当前笔记上下文写入终端可读取的运行时文件：
 - `OBSITERM_CONTEXT_FILE`：当前笔记、光标、选区等信息的 JSON 快照
 - `OBSITERM_SELECTION_FILE`：当前选中文本的纯文本文件
 - `OBSITERM_ACTIVE_FILE`：终端标签打开时的当前笔记绝对路径
+- `OBSITERM_CONTEXT_BRIDGE_URL`：供终端工具按需查询的本地只读 HTTP bridge
+- `OBSITERM_CONTEXT_BRIDGE_TOKEN`：访问本地 bridge 所需的 bearer token
 
 当你在 Obsidian 中切换笔记、编辑内容或修改选区时，JSON 文件会持续更新。
 
@@ -172,6 +174,47 @@ Windows PowerShell：
 ```powershell
 Get-Content $env:OBSITERM_CONTEXT_FILE
 Get-Content $env:OBSITERM_SELECTION_FILE
+```
+
+### 上下文 bridge API
+
+除了运行时文件外，ObsiTerm 还会暴露一个本地只读 HTTP bridge。这样终端工具可以在需要时主动查询当前笔记与选区，而不只是被动读取文件。
+
+可用接口：
+
+- `OBSITERM_CONTEXT_ENDPOINT`
+- `OBSITERM_SELECTION_ENDPOINT`
+- `OBSITERM_ACTIVE_NOTE_ENDPOINT`
+- `OBSITERM_SELECTION_PROMPT_ENDPOINT`
+- `OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT`
+- `OBSITERM_CONTEXT_CLI`
+- `OBSITERM_CONTEXT_MCP`
+- `OBSITERM_CONTEXT_MCP_CONFIG_FILE`
+
+PowerShell 示例：
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:OBSITERM_CONTEXT_BRIDGE_TOKEN" }
+Invoke-RestMethod -Headers $headers $env:OBSITERM_SELECTION_ENDPOINT
+Invoke-RestMethod -Headers $headers $env:OBSITERM_CONTEXT_ENDPOINT
+```
+
+POSIX shell 示例：
+
+```bash
+curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_SELECTION_ENDPOINT"
+curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_CONTEXT_ENDPOINT"
+```
+
+`/prompts/*` 这组接口会返回带 `prompt` 字段的 JSON，适合 Claude Code 或其他 agent CLI 在需要时按需获取当前 Obsidian 上下文提示词。
+
+CLI 示例：
+
+```powershell
+node $env:OBSITERM_CONTEXT_CLI selection
+node $env:OBSITERM_CONTEXT_CLI context
+node $env:OBSITERM_CONTEXT_CLI selection-prompt --text
+node $env:OBSITERM_CONTEXT_CLI mcp-config
 ```
 
 命令面板里的辅助命令：
@@ -192,7 +235,6 @@ Get-Content $env:OBSITERM_SELECTION_FILE
 - 显示当前活动笔记路径
 - 当前台检测到 Claude Code、Codex CLI 或 Gemini CLI 时，提示会切换成 `? for shortcuts`
 - 右上角提供 `Send Selection` 和 `Send Note` 按钮，可直接发送 Claude 风格的 prompt
-- 在终端区域内点击鼠标右键，也可以看到同样的 Claude prompt 操作菜单
 
 这个设计的目的是让 Obsidian 侧上下文保持可见，而不必要求终端工具先手动读取运行时文件。
 
@@ -203,5 +245,42 @@ Get-Content $env:OBSITERM_SELECTION_FILE
 - 如果 Windows 提示 `resources/pty-helper.exe` 被占用，先关闭 Obsidian，再重新构建以刷新 helper
 
 ## 许可证
+
+### MCP server（给 Claude Code / Codex 等工具）
+
+ObsiTerm 现在还会打包一个最小可用的 `stdio` MCP server，它会复用本地 context bridge，把当前笔记和选区暴露成 MCP tools。
+
+可用 tools：
+- `get_obsidian_context`
+- `get_current_selection`
+- `get_active_note`
+- `get_selection_prompt`
+- `get_active_note_prompt`
+
+PowerShell 查看环境变量：
+```powershell
+$env:OBSITERM_CONTEXT_MCP
+$env:OBSITERM_CONTEXT_BRIDGE_TOKEN
+```
+
+MCP 配置示例：
+```json
+{
+  "mcpServers": {
+    "obsiterm": {
+      "command": "node",
+      "args": ["E:/Obsidian/obsidian_private/.obsidian/plugins/ObsiTerm/resources/obsiterm-mcp.mjs"],
+      "env": {
+        "OBSITERM_CONTEXT_BRIDGE_TOKEN": "...",
+        "OBSITERM_CONTEXT_ENDPOINT": "...",
+        "OBSITERM_SELECTION_ENDPOINT": "...",
+        "OBSITERM_ACTIVE_NOTE_ENDPOINT": "...",
+        "OBSITERM_SELECTION_PROMPT_ENDPOINT": "...",
+        "OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT": "..."
+      }
+    }
+  }
+}
+```
 
 MIT

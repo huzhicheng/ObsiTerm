@@ -42,6 +42,8 @@ const bundleFiles = [
     'styles.css'
 ];
 const helperSourcePath = path.join(rootDir, 'resources', helperFileName);
+const contextCliSourcePath = path.join(rootDir, 'resources', 'obsiterm-context.mjs');
+const contextMcpSourcePath = path.join(rootDir, 'resources', 'obsiterm-mcp.mjs');
 const themesSourcePath = path.join(rootDir, 'themes');
 const releaseBundleDir = path.join(rootDir, 'releases', platformName, pluginDirName);
 
@@ -54,6 +56,14 @@ for (const file of bundleFiles) {
 
 if (!existsSync(helperSourcePath)) {
     throw new Error(`Missing PTY helper: ${helperSourcePath}`);
+}
+
+if (!existsSync(contextCliSourcePath)) {
+    throw new Error(`Missing context CLI: ${contextCliSourcePath}`);
+}
+
+if (!existsSync(contextMcpSourcePath)) {
+    throw new Error(`Missing context MCP server: ${contextMcpSourcePath}`);
 }
 
 try {
@@ -105,6 +115,20 @@ function copyPluginBundle(destinationDir) {
         cpSync(helperSourcePath, helperTargetPath);
     } catch (error) {
         throw wrapFileError(`Failed to copy ${helperSourcePath} -> ${helperTargetPath}`, error, helperTargetPath);
+    }
+
+    const contextCliTargetPath = path.join(destinationDir, 'resources', 'obsiterm-context.mjs');
+    try {
+        cpSync(contextCliSourcePath, contextCliTargetPath);
+    } catch (error) {
+        throw wrapFileError(`Failed to copy ${contextCliSourcePath} -> ${contextCliTargetPath}`, error, contextCliTargetPath);
+    }
+
+    const contextMcpTargetPath = path.join(destinationDir, 'resources', 'obsiterm-mcp.mjs');
+    try {
+        cpSync(contextMcpSourcePath, contextMcpTargetPath);
+    } catch (error) {
+        throw wrapFileError(`Failed to copy ${contextMcpSourcePath} -> ${contextMcpTargetPath}`, error, contextMcpTargetPath);
     }
 
     for (const entry of readdirSync(themesSourcePath)) {
