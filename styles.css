@@ -56,6 +56,37 @@
 	white-space: nowrap;
 }
 
+.xterm-terminal-statusbar-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.xterm-terminal-statusbar-button {
+	appearance: none;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	border-radius: 999px;
+	padding: 3px 10px;
+	font: inherit;
+	line-height: 1.2;
+	cursor: pointer;
+	transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.xterm-terminal-statusbar-button:hover:not(:disabled) {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary));
+	border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
+	color: var(--text-normal);
+}
+
+.xterm-terminal-statusbar-button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
 /* xterm.js core styles - essential for proper display and scrolling */
 .xterm {
 	cursor: text;

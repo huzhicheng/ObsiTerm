@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice, Menu } from 'obsidian';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { VaultScanner } from './VaultScanner';
@@ -24,6 +24,9 @@ export class TerminalView extends ItemView {
     private statusHintEl: HTMLElement | null = null;
     private statusSelectionEl: HTMLElement | null = null;
     private statusContextEl: HTMLElement | null = null;
+    private statusActionsEl: HTMLElement | null = null;
+    private sendSelectionPromptButtonEl: HTMLButtonElement | null = null;
+    private sendActiveNotePromptButtonEl: HTMLButtonElement | null = null;
     private scanner: VaultScanner;
     private autocomplete: AutocompleteManager | null = null;
     private currentTheme: TerminalTheme | null = null;
@@ -68,7 +71,38 @@ export class TerminalView extends ItemView {
         this.statusHintEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-hint' });
         this.statusSelectionEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-selection' });
         this.statusContextEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-context' });
+        this.statusActionsEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-actions' });
+        this.sendSelectionPromptButtonEl = this.statusActionsEl.createEl('button', {
+            cls: 'xterm-terminal-statusbar-button',
+            text: 'Send Selection'
+        });
+        this.sendActiveNotePromptButtonEl = this.statusActionsEl.createEl('button', {
+            cls: 'xterm-terminal-statusbar-button',
+            text: 'Send Note'
+        });
         this.statusHintEl.setText('? for shortcuts');
+        this.sendSelectionPromptButtonEl.type = 'button';
+        this.sendSelectionPromptButtonEl.setAttribute('aria-label', 'Send current selection as Claude prompt');
+        this.sendSelectionPromptButtonEl.title = 'Send current selection as Claude prompt';
+        this.sendActiveNotePromptButtonEl.type = 'button';
+        this.sendActiveNotePromptButtonEl.setAttribute('aria-label', 'Send active note as Claude prompt');
+        this.sendActiveNotePromptButtonEl.title = 'Send active note as Claude prompt';
+        this.registerDomEvent(this.sendSelectionPromptButtonEl, 'click', () => {
+            const prompt = this.plugin.getObsidianContextService()?.buildClaudePromptForSelection() ?? '';
+            if (!prompt) {
+                new Notice('No current selection to send.');
+                return;
+            }
+            this.sendClaudePromptToTerminal(prompt);
+        });
+        this.registerDomEvent(this.sendActiveNotePromptButtonEl, 'click', () => {
+            const prompt = this.plugin.getObsidianContextService()?.buildClaudePromptForActiveNote() ?? '';
+            if (!prompt) {
+                new Notice('No active note to send.');
+                return;
+            }
+            this.sendClaudePromptToTerminal(prompt);
+        });
         // Terminal container - below host status bar
         this.terminalContainer = container.createDiv({ cls: 'xterm-terminal-container' });
 
@@ -127,6 +161,12 @@ export class TerminalView extends ItemView {
         this.registerDomEvent(this.terminalContainer, 'mousedown', () => {
             void this.plugin.getObsidianContextService()?.captureSnapshotFromActiveMarkdownView();
         }, { capture: true });
+        this.registerDomEvent(this.terminalContainer, 'contextmenu', (event: MouseEvent) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.plugin.getObsidianContextService()?.captureSnapshotFromActiveMarkdownView();
+            this.openTerminalContextMenu(event);
+        });
 
         // Initialize autocomplete
         this.autocomplete = new AutocompleteManager(
@@ -441,6 +481,41 @@ export class TerminalView extends ItemView {
         this.sendTextToTerminal(this.formatClaudePromptPayload(prompt));
     }
 
+    private openTerminalContextMenu(event: MouseEvent): void {
+        const contextService = this.plugin.getObsidianContextService();
+        const selectionPrompt = contextService?.buildClaudePromptForSelection() ?? '';
+        const activeNotePrompt = contextService?.buildClaudePromptForActiveNote() ?? '';
+
+        const menu = new Menu();
+        menu.addItem((item) => {
+            item
+                .setTitle('Send Selection As Claude Prompt')
+                .setIcon('message-square')
+                .setDisabled(!selectionPrompt)
+                .onClick(() => {
+                    if (!selectionPrompt) {
+                        new Notice('No current selection to send.');
+                        return;
+                    }
+                    this.sendClaudePromptToTerminal(selectionPrompt);
+                });
+        });
+        menu.addItem((item) => {
+            item
+                .setTitle('Send Note As Claude Prompt')
+                .setIcon('file-text')
+                .setDisabled(!activeNotePrompt)
+                .onClick(() => {
+                    if (!activeNotePrompt) {
+                        new Notice('No active note to send.');
+                        return;
+                    }
+                    this.sendClaudePromptToTerminal(activeNotePrompt);
+                });
+        });
+        menu.showAtMouseEvent(event);
+    }
+
     /**
      * Handle system paste so text goes through xterm's paste path and
      * clipboard images become temporary files that terminal tools can read.
@@ -745,6 +820,9 @@ export class TerminalView extends ItemView {
         this.statusHintEl = null;
         this.statusSelectionEl = null;
         this.statusContextEl = null;
+        this.statusActionsEl = null;
+        this.sendSelectionPromptButtonEl = null;
+        this.sendActiveNotePromptButtonEl = null;
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
         if (this.fitFrame !== null) {
@@ -954,6 +1032,12 @@ export class TerminalView extends ItemView {
                 : 'No current selection'
         );
         this.statusContextEl.setText(snapshot.activeFilePath ?? 'No active note');
+        if (this.sendSelectionPromptButtonEl) {
+            this.sendSelectionPromptButtonEl.disabled = !snapshot.hasSelection;
+        }
+        if (this.sendActiveNotePromptButtonEl) {
+            this.sendActiveNotePromptButtonEl.disabled = !snapshot.activeFileAbsolutePath;
+        }
     }
 
     private formatSelectionPayload(selection: string): string {

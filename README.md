@@ -191,6 +191,8 @@ Inspired by Claude Code's IDE footer, each terminal view now shows a lightweight
 - It shows the current Obsidian selection line count
 - It shows the active note path
 - When Claude Code, Codex CLI, or Gemini CLI is detected in the foreground, the hint switches to `? for shortcuts`
+- It includes `Send Selection` and `Send Note` buttons for quickly sending Claude-style prompts without opening the command palette
+- Right-clicking inside the terminal also opens a context menu with the same Claude prompt actions
 
 This is meant to make the Obsidian-side context visible without forcing terminal tools to read files manually first.
 
