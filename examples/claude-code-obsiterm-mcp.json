@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "obsiterm": {
+      "command": "node",
+      "args": [
+        "E:/YourVault/.obsidian/plugins/ObsiTerm/resources/obsiterm-mcp.mjs"
+      ]
+    }
+  }
+}

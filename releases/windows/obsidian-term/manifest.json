@@ -1,7 +1,7 @@
 {
 	"id": "ObsiTerm",
 	"name": "ObsiTerm",
-	"version": "1.1.0",
+	"version": "1.0.0",
 	"minAppVersion": "1.0.0",
 	"description": "Obsidian中的真终端",
 	"author": "古时的风筝",

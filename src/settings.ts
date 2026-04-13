@@ -12,13 +12,17 @@ export interface TerminalSettings {
     fontSize: number;
     fontFamily: string;
     autocompleteTrigger: string;
+    shellPath: string;
+    initialWorkingDirectory: string;
 }
 
 export const DEFAULT_SETTINGS: TerminalSettings = {
     themeName: '',
     fontSize: 14,
     fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-    autocompleteTrigger: '@'
+    autocompleteTrigger: '@',
+    shellPath: '',
+    initialWorkingDirectory: ''
 };
 
 export class TerminalSettingTab extends PluginSettingTab {
@@ -147,6 +151,36 @@ export class TerminalSettingTab extends PluginSettingTab {
                     });
             });
 
+        new Setting(containerEl)
+            .setName(this.t('shellPath'))
+            .setDesc(this.t('shellPathDesc'))
+            .addText((text) => {
+                text
+                    .setPlaceholder(this.getShellPlaceholder())
+                    .setValue(this.plugin.settings.shellPath)
+                    .onChange(async (value) => {
+                        const normalized = value.trim();
+                        if (normalized === this.plugin.settings.shellPath) return;
+                        this.plugin.settings.shellPath = normalized;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName(this.t('initialWorkingDirectory'))
+            .setDesc(this.t('initialWorkingDirectoryDesc'))
+            .addText((text) => {
+                text
+                    .setPlaceholder(this.getInitialWorkingDirectoryPlaceholder())
+                    .setValue(this.plugin.settings.initialWorkingDirectory)
+                    .onChange(async (value) => {
+                        const normalized = value.trim();
+                        if (normalized === this.plugin.settings.initialWorkingDirectory) return;
+                        this.plugin.settings.initialWorkingDirectory = normalized;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
         const fontSetting = new Setting(containerEl)
             .setName(this.t('fontFamily'))
             .setDesc(this.t('fontFamilyDesc'))
@@ -247,6 +281,18 @@ export class TerminalSettingTab extends PluginSettingTab {
         const trimmed = value.trim();
         return trimmed.length > 0 ? trimmed : DEFAULT_SETTINGS.autocompleteTrigger;
     }
+
+    private getShellPlaceholder(): string {
+        return process.platform === 'win32'
+            ? 'pwsh.exe or C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+            : '/bin/zsh or /bin/bash';
+    }
+
+    private getInitialWorkingDirectoryPlaceholder(): string {
+        return process.platform === 'win32'
+            ? 'Leave empty for vault root, or .\\notes, E:\\Projects'
+            : 'Leave empty for vault root, or ./notes, /Users/name/Projects';
+    }
 }
 
 type TranslationKey =
@@ -264,6 +310,10 @@ type TranslationKey =
     | 'fontSizeDesc'
     | 'autocompleteTrigger'
     | 'autocompleteTriggerDesc'
+    | 'shellPath'
+    | 'shellPathDesc'
+    | 'initialWorkingDirectory'
+    | 'initialWorkingDirectoryDesc'
     | 'fontFamily'
     | 'fontFamilyDesc'
     | 'loadingFonts'
@@ -291,6 +341,10 @@ const EN: Record<TranslationKey, string> = {
     fontSizeDesc: 'Terminal font size in pixels',
     autocompleteTrigger: 'Vault Path Trigger',
     autocompleteTriggerDesc: 'Trigger bundled vault path autocomplete. When Claude Code, Codex CLI, or Gemini CLI is in the foreground, single @ is passed through to the agent.',
+    shellPath: 'Shell Command',
+    shellPathDesc: 'Optional shell override. Leave empty to auto-detect the best shell for the current platform.',
+    initialWorkingDirectory: 'Initial Directory',
+    initialWorkingDirectoryDesc: 'Optional terminal startup directory. Leave empty to start in the vault root. Relative paths are resolved from the vault root.',
     fontFamily: 'Font Family',
     fontFamilyDesc: 'Pick a local installed font from a searchable modal.',
     loadingFonts: 'Loading installed fonts...',
@@ -319,6 +373,10 @@ const ZH: Record<TranslationKey, string> = {
     fontSizeDesc: '终端字体大小（像素）',
     autocompleteTrigger: '路径补全触发符',
     autocompleteTriggerDesc: '触发插件内置 vault 路径补全。当 Claude Code、Codex CLI、Gemini CLI 处于前台时，单个 @ 会让给这些 Agent 自己处理。',
+    shellPath: 'Shell 命令',
+    shellPathDesc: '可选的 shell 覆盖值。留空时会按当前平台自动选择最合适的 shell。',
+    initialWorkingDirectory: '初始目录',
+    initialWorkingDirectoryDesc: '可选的终端启动目录。留空时默认使用 vault 根目录，相对路径会相对于 vault 根目录解析。',
     fontFamily: '字体族',
     fontFamilyDesc: '从可搜索的弹窗中选择本机已安装字体。',
     loadingFonts: '正在加载本机字体...',
@@ -326,7 +384,7 @@ const ZH: Record<TranslationKey, string> = {
     reloadFonts: '重新加载本机字体',
     chooseFont: '选择',
     fontPickerPlaceholder: '搜索本机字体',
-    fontPickerInstructions: '应用当前选中字体',
+    fontPickerInstructions: '应用当前选中字體',
     fontPickerNoMatch: '没有匹配的字体',
     currentFont: '当前',
     typeToFilter: '输入'

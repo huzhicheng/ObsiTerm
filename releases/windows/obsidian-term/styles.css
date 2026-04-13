@@ -8,83 +8,11 @@
 }
 
 .xterm-terminal-container {
-	order: 1;
 	flex: 1;
 	position: relative;
 	overflow: hidden;
 	background-color: var(--background-primary);
 	border-radius: 0;
-}
-
-.xterm-terminal-statusbar {
-	display: flex;
-	align-items: center;
-	gap: 10px;
-	min-height: 28px;
-	order: 0;
-	flex-shrink: 0;
-	padding: 6px 10px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	background:
-		linear-gradient(90deg, color-mix(in srgb, var(--background-secondary) 90%, transparent), transparent),
-		var(--background-primary);
-	color: var(--text-muted);
-	font-family: var(--font-monospace);
-	font-size: 11px;
-	line-height: 1.3;
-}
-
-.xterm-terminal-statusbar.is-agent-active {
-	color: var(--text-normal);
-}
-
-.xterm-terminal-statusbar-hint {
-	font-weight: 600;
-	color: var(--text-normal);
-	white-space: nowrap;
-}
-
-.xterm-terminal-statusbar-selection {
-	white-space: nowrap;
-	color: var(--color-accent);
-}
-
-.xterm-terminal-statusbar-context {
-	flex: 1;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-.xterm-terminal-statusbar-actions {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-left: auto;
-}
-
-.xterm-terminal-statusbar-button {
-	appearance: none;
-	border: 1px solid var(--background-modifier-border);
-	background: var(--background-secondary);
-	color: var(--text-normal);
-	border-radius: 999px;
-	padding: 3px 10px;
-	font: inherit;
-	line-height: 1.2;
-	cursor: pointer;
-	transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
-}
-
-.xterm-terminal-statusbar-button:hover:not(:disabled) {
-	background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-secondary));
-	border-color: color-mix(in srgb, var(--interactive-accent) 45%, var(--background-modifier-border));
-	color: var(--text-normal);
-}
-
-.xterm-terminal-statusbar-button:disabled {
-	opacity: 0.5;
-	cursor: default;
 }
 
 /* xterm.js core styles - essential for proper display and scrolling */
@@ -250,6 +178,12 @@
 	background: rgba(128, 128, 128, 0.7);
 }
 
+/* Fix text selection */
+.xterm .xterm-screen {
+	user-select: text !important;
+	-webkit-user-select: text !important;
+}
+
 .xterm .xterm-selection div {
 	position: absolute;
 	background-color: rgba(100, 100, 255, 0.3) !important;
@@ -317,11 +251,6 @@
 	color: var(--text-on-accent);
 }
 
-.xterm-autocomplete-item.is-selected .xterm-autocomplete-icon,
-.xterm-autocomplete-item.is-selected .xterm-autocomplete-path {
-	color: inherit;
-}
-
 .xterm-autocomplete-icon {
 	font-size: 16px;
 }
@@ -340,12 +269,6 @@
 	padding: 2px 6px;
 	background: var(--background-secondary);
 	border-radius: 4px;
-}
-
-.xterm-autocomplete-item.is-selected .xterm-autocomplete-type {
-	opacity: 1;
-	background: color-mix(in srgb, var(--text-on-accent) 18%, transparent);
-	color: var(--text-on-accent);
 }
 
 .xterm-font-family-value {

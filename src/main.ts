@@ -2,6 +2,7 @@ import { Plugin, WorkspaceLeaf } from 'obsidian';
 import { TerminalView, TERMINAL_VIEW_TYPE } from './TerminalView';
 import { TerminalSettingTab, TerminalSettings, DEFAULT_SETTINGS } from './settings';
 import type { InstalledFontFamily } from './settings';
+import { ObsidianContextService } from './ObsidianContext';
 import {
     GhosttyThemeDefinition,
     TerminalTheme,
@@ -16,12 +17,15 @@ export default class XTermTerminalPlugin extends Plugin {
     private bundledThemes: GhosttyThemeDefinition[] = [];
     private installedFonts: InstalledFontFamily[] = [];
     private installedFontsPromise: Promise<InstalledFontFamily[]> | null = null;
+    private contextService: ObsidianContextService | null = null;
 
     async onload(): Promise<void> {
         console.log('Loading xTerm Terminal plugin');
 
         // Load settings
         await this.loadSettings();
+        this.contextService = new ObsidianContextService(this);
+        await this.contextService.start();
 
         // Register the terminal view
         this.registerView(
@@ -72,11 +76,79 @@ export default class XTermTerminalPlugin extends Plugin {
                 this.showThemeSelector();
             }
         });
+
+        this.addCommand({
+            id: 'copy-obsidian-context-file-path',
+            name: 'Copy Obsidian Context File Path',
+            callback: () => {
+                void this.contextService?.copyContextFilePath();
+            }
+        });
+
+        this.addCommand({
+            id: 'copy-current-note-selection',
+            name: 'Copy Current Note Selection',
+            callback: () => {
+                void this.contextService?.copyCurrentSelection();
+            }
+        });
+
+        this.addCommand({
+            id: 'send-current-selection-to-terminal',
+            name: 'Send Current Selection To Terminal',
+            callback: () => {
+                const snapshot = this.contextService?.getLatestSelectionSnapshot() ?? this.contextService?.getLatestSnapshot();
+                if (!snapshot?.selection) return;
+                this.getTargetTerminalView()?.sendCurrentSelectionToTerminal(snapshot.selection);
+            }
+        });
+
+        this.addCommand({
+            id: 'send-active-note-path-to-terminal',
+            name: 'Send Active Note Path To Terminal',
+            callback: () => {
+                const snapshot = this.contextService?.getLatestSnapshot();
+                if (!snapshot?.activeFileAbsolutePath) return;
+                this.getTargetTerminalView()?.sendActiveFilePathToTerminal(snapshot.activeFileAbsolutePath);
+            }
+        });
+
+        this.addCommand({
+            id: 'send-obsidian-context-summary-to-terminal',
+            name: 'Send Obsidian Context Summary To Terminal',
+            callback: () => {
+                const snapshot = this.contextService?.getLatestSelectionSnapshot() ?? this.contextService?.getLatestSnapshot();
+                const summary = snapshot ? this.contextService?.buildContextSummary(snapshot) : '';
+                if (!summary) return;
+                this.getTargetTerminalView()?.sendContextSummaryToTerminal(summary);
+            }
+        });
+
+        this.addCommand({
+            id: 'send-current-selection-as-claude-prompt',
+            name: 'Send Current Selection As Claude Prompt',
+            callback: () => {
+                const prompt = this.contextService?.buildClaudePromptForSelection() ?? '';
+                if (!prompt) return;
+                this.getTargetTerminalView()?.sendClaudePromptToTerminal(prompt);
+            }
+        });
+
+        this.addCommand({
+            id: 'send-active-note-as-claude-prompt',
+            name: 'Send Active Note As Claude Prompt',
+            callback: () => {
+                const prompt = this.contextService?.buildClaudePromptForActiveNote() ?? '';
+                if (!prompt) return;
+                this.getTargetTerminalView()?.sendClaudePromptToTerminal(prompt);
+            }
+        });
     }
 
     async onunload(): Promise<void> {
         console.log('Unloading xTerm Terminal plugin');
         this.app.workspace.detachLeavesOfType(TERMINAL_VIEW_TYPE);
+        this.contextService = null;
     }
 
     async loadSettings(): Promise<void> {
@@ -87,7 +159,11 @@ export default class XTermTerminalPlugin extends Plugin {
             fontFamily: typeof rawData.fontFamily === 'string' ? rawData.fontFamily : DEFAULT_SETTINGS.fontFamily,
             autocompleteTrigger: typeof rawData.autocompleteTrigger === 'string' && rawData.autocompleteTrigger.trim().length > 0
                 ? rawData.autocompleteTrigger.trim()
-                : DEFAULT_SETTINGS.autocompleteTrigger
+                : DEFAULT_SETTINGS.autocompleteTrigger,
+            shellPath: typeof rawData.shellPath === 'string' ? rawData.shellPath.trim() : DEFAULT_SETTINGS.shellPath,
+            initialWorkingDirectory: typeof rawData.initialWorkingDirectory === 'string'
+                ? rawData.initialWorkingDirectory.trim()
+                : DEFAULT_SETTINGS.initialWorkingDirectory
         };
 
         this.bundledThemes = await loadBundledGhosttyThemes(this.getThemeDirectoryPath());
@@ -107,6 +183,20 @@ export default class XTermTerminalPlugin extends Plugin {
 
     async saveSettings(): Promise<void> {
         await this.saveData(this.settings);
+    }
+
+    getObsidianContextService(): ObsidianContextService | null {
+        return this.contextService;
+    }
+
+    private getTargetTerminalView(): TerminalView | null {
+        const activeView = this.app.workspace.getActiveViewOfType(TerminalView);
+        if (activeView) {
+            return activeView;
+        }
+
+        const terminalLeaf = this.app.workspace.getLeavesOfType(TERMINAL_VIEW_TYPE)[0];
+        return terminalLeaf?.view instanceof TerminalView ? terminalLeaf.view : null;
     }
 
     /**

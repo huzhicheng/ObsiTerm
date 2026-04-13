@@ -32,18 +32,14 @@ export class AutocompleteManager {
         };
     }
 
-    /**
-     * 处理输入字符
-     */
     handleInput(char: string, cursorPosition: number): boolean {
         if (this.state.isActive) {
-            // 只有回车和换行才关闭自动补全，空格允许继续搜索
             if (char === '\r' || char === '\n') {
                 this.deactivate();
                 return false;
             }
 
-            if (char === '\x7f' || char === '\b') { // Backspace
+            if (char === '\x7f' || char === '\b') {
                 if (this.state.searchText.length > 0) {
                     this.state.searchText = this.state.searchText.slice(0, -1);
                     this.updateSuggestions();
@@ -53,7 +49,6 @@ export class AutocompleteManager {
                 return true;
             }
 
-            // 添加字符到搜索文本（包括空格）
             this.state.searchText += char;
             this.updateSuggestions();
             return true;
@@ -73,9 +68,6 @@ export class AutocompleteManager {
         this.showPopup();
     }
 
-    /**
-     * 处理特殊按键
-     */
     handleSpecialKey(key: string): boolean {
         if (!this.state.isActive) return false;
 
@@ -98,26 +90,17 @@ export class AutocompleteManager {
         return false;
     }
 
-    /**
-     * 关闭自动补全
-     */
     deactivate(): void {
         this.state.isActive = false;
         this.hidePopup();
     }
 
-    /**
-     * 更新建议列表
-     */
     private updateSuggestions(): void {
         this.state.items = this.scanner.filter(this.state.searchText);
         this.state.selectedIndex = 0;
         this.renderPopup();
     }
 
-    /**
-     * 移动选择
-     */
     private moveSelection(direction: number): void {
         const newIndex = this.state.selectedIndex + direction;
         if (newIndex >= 0 && newIndex < this.state.items.length) {
@@ -127,9 +110,6 @@ export class AutocompleteManager {
         }
     }
 
-    /**
-     * 选择当前项
-     */
     private selectCurrent(): void {
         if (this.state.items.length > 0) {
             const item = this.state.items[this.state.selectedIndex];
@@ -138,9 +118,6 @@ export class AutocompleteManager {
         this.deactivate();
     }
 
-    /**
-     * 显示弹出框
-     */
     private showPopup(): void {
         if (this.popup) {
             this.hidePopup();
@@ -148,7 +125,6 @@ export class AutocompleteManager {
 
         this.popup = document.createElement('div');
         this.popup.className = 'xterm-autocomplete-popup';
-        // Position at bottom of terminal
         this.popup.style.position = 'absolute';
         this.popup.style.left = '10px';
         this.popup.style.bottom = '10px';
@@ -157,9 +133,6 @@ export class AutocompleteManager {
         this.renderPopup();
     }
 
-    /**
-     * 隐藏弹出框
-     */
     private hidePopup(): void {
         if (this.popup) {
             this.popup.remove();
@@ -167,28 +140,34 @@ export class AutocompleteManager {
         }
     }
 
-    /**
-     * 渲染弹出框内容
-     */
     private renderPopup(): void {
         if (!this.popup) return;
 
         if (this.state.items.length === 0) {
             this.popup.innerHTML = `
-				<div class="xterm-autocomplete-item" style="opacity: 0.5;">
-					没有匹配的文件或文件夹
+				<div class="xterm-autocomplete-header">
+					<span>Vault paths</span>
+					<span>Esc cancel</span>
+				</div>
+				<div class="xterm-autocomplete-empty">
+					No matching files or folders
 				</div>
 			`;
             return;
         }
 
-        this.popup.innerHTML = this.state.items
-            .map((item, index) => {
-                const isSelected = index === this.state.selectedIndex;
-                const icon = item.isFolder ? '📁' : '📄';
-                const type = item.isFolder ? 'folder' : 'file';
+        this.popup.innerHTML = `
+			<div class="xterm-autocomplete-header">
+				<span>Vault paths</span>
+				<span>↑↓ move · Enter/Tab apply</span>
+			</div>
+			${this.state.items
+                .map((item, index) => {
+                    const isSelected = index === this.state.selectedIndex;
+                    const icon = item.isFolder ? '📁' : '📄';
+                    const type = item.isFolder ? 'folder' : 'file';
 
-                return `
+                    return `
 					<div class="xterm-autocomplete-item ${isSelected ? 'is-selected' : ''}" 
 						 data-index="${index}">
 						<span class="xterm-autocomplete-icon">${icon}</span>
@@ -196,10 +175,10 @@ export class AutocompleteManager {
 						<span class="xterm-autocomplete-type">${type}</span>
 					</div>
 				`;
-            })
-            .join('');
+                })
+                .join('')}
+		`;
 
-        // 添加点击事件
         this.popup.querySelectorAll('.xterm-autocomplete-item').forEach((el, index) => {
             el.addEventListener('click', () => {
                 this.state.selectedIndex = index;
@@ -208,9 +187,6 @@ export class AutocompleteManager {
         });
     }
 
-    /**
-     * 滚动到选中项
-     */
     private scrollToSelected(): void {
         if (!this.popup) return;
 
@@ -220,9 +196,6 @@ export class AutocompleteManager {
         }
     }
 
-    /**
-     * 设置弹出框位置
-     */
     setPopupPosition(x: number, y: number): void {
         if (this.popup) {
             this.popup.style.left = `${x}px`;
@@ -230,16 +203,10 @@ export class AutocompleteManager {
         }
     }
 
-    /**
-     * 检查是否激活
-     */
     isActive(): boolean {
         return this.state.isActive;
     }
 
-    /**
-     * 获取当前搜索文本
-     */
     getSearchText(): string {
         return this.state.searchText;
     }

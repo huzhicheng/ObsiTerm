@@ -3,6 +3,7 @@ import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { VaultScanner } from './VaultScanner';
 import { AutocompleteManager } from './AutocompleteManager';
+import type { ObsidianContextSnapshot } from './ObsidianContext';
 import { spawn, ChildProcess } from 'child_process';
 import { TerminalTheme } from './themes';
 import { TerminalSettings } from './settings';
@@ -19,6 +20,13 @@ export class TerminalView extends ItemView {
     private ptyProcess: ChildProcess | null = null;
     private resizePipe: fs.WriteStream | null = null;
     private terminalContainer: HTMLElement | null = null;
+    private statusBarEl: HTMLElement | null = null;
+    private statusHintEl: HTMLElement | null = null;
+    private statusSelectionEl: HTMLElement | null = null;
+    private statusContextEl: HTMLElement | null = null;
+    private statusActionsEl: HTMLElement | null = null;
+    private sendSelectionPromptButtonEl: HTMLButtonElement | null = null;
+    private sendActiveNotePromptButtonEl: HTMLButtonElement | null = null;
     private scanner: VaultScanner;
     private autocomplete: AutocompleteManager | null = null;
     private currentTheme: TerminalTheme | null = null;
@@ -32,6 +40,10 @@ export class TerminalView extends ItemView {
     private foregroundCommands: string[] = [];
     private resizeObserver: ResizeObserver | null = null;
     private fitFrame: number | null = null;
+    private shellDisplayName: string = '';
+    private unsubscribeContext: (() => void) | null = null;
+    private hasTerminalSelection = false;
+    private pendingContextSnapshot: ObsidianContextSnapshot | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: XTermTerminalPlugin) {
         super(leaf);
@@ -57,7 +69,43 @@ export class TerminalView extends ItemView {
         container.addClass('xterm-terminal-view');
         container.style.padding = '0';
 
-        // Terminal container - no header, full height
+        this.statusBarEl = container.createDiv({ cls: 'xterm-terminal-statusbar' });
+        this.statusHintEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-hint' });
+        this.statusSelectionEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-selection' });
+        this.statusContextEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-context' });
+        this.statusActionsEl = this.statusBarEl.createDiv({ cls: 'xterm-terminal-statusbar-actions' });
+        this.sendSelectionPromptButtonEl = this.statusActionsEl.createEl('button', {
+            cls: 'xterm-terminal-statusbar-button',
+            text: 'Send Selection'
+        });
+        this.sendActiveNotePromptButtonEl = this.statusActionsEl.createEl('button', {
+            cls: 'xterm-terminal-statusbar-button',
+            text: 'Send Note'
+        });
+        this.statusHintEl.setText('? for shortcuts');
+        this.sendSelectionPromptButtonEl.type = 'button';
+        this.sendSelectionPromptButtonEl.setAttribute('aria-label', 'Send current selection as Claude prompt');
+        this.sendSelectionPromptButtonEl.title = 'Send current selection as Claude prompt';
+        this.sendActiveNotePromptButtonEl.type = 'button';
+        this.sendActiveNotePromptButtonEl.setAttribute('aria-label', 'Send active note as Claude prompt');
+        this.sendActiveNotePromptButtonEl.title = 'Send active note as Claude prompt';
+        this.registerDomEvent(this.sendSelectionPromptButtonEl, 'click', () => {
+            const prompt = this.plugin.getObsidianContextService()?.buildClaudePromptForSelection() ?? '';
+            if (!prompt) {
+                new Notice('No current selection to send.');
+                return;
+            }
+            this.sendClaudePromptToTerminal(prompt);
+        });
+        this.registerDomEvent(this.sendActiveNotePromptButtonEl, 'click', () => {
+            const prompt = this.plugin.getObsidianContextService()?.buildClaudePromptForActiveNote() ?? '';
+            if (!prompt) {
+                new Notice('No active note to send.');
+                return;
+            }
+            this.sendClaudePromptToTerminal(prompt);
+        });
+        // Terminal container - below host status bar
         this.terminalContainer = container.createDiv({ cls: 'xterm-terminal-container' });
 
         // Initialize terminal
@@ -90,6 +138,9 @@ export class TerminalView extends ItemView {
             theme: this.getVisibleCursorTheme(this.currentTheme),
             allowProposedApi: true,
             scrollback: 10000,
+            altClickMovesCursor: false,
+            rightClickSelectsWord: false,
+            macOptionClickForcesSelection: true,
             convertEol: false,  // Let PTY handle line endings
             scrollOnUserInput: true
         });
@@ -111,6 +162,15 @@ export class TerminalView extends ItemView {
             this.sendResize(cols, rows);
             this.requestTerminalRefresh();
         });
+        this.terminal.onSelectionChange(() => {
+            const hasSelection = this.terminal?.hasSelection() ?? false;
+            this.hasTerminalSelection = hasSelection;
+            if (!hasSelection && this.pendingContextSnapshot) {
+                const snapshot = this.pendingContextSnapshot;
+                this.pendingContextSnapshot = null;
+                this.updateStatusBar(snapshot);
+            }
+        });
 
         // Initialize autocomplete
         this.autocomplete = new AutocompleteManager(
@@ -120,8 +180,10 @@ export class TerminalView extends ItemView {
         );
 
         this.registerPasteHandling();
+        this.registerClipboardShortcuts();
 
         this.setupResizeHandling();
+        this.bindContextStatus();
 
         // Start PTY helper
         await this.startPtyHelper();
@@ -144,7 +206,8 @@ export class TerminalView extends ItemView {
             ? (path.isAbsolute(manifestDir) ? manifestDir : path.join(vaultPath, manifestDir))
             : path.join(vaultPath, '.obsidian', 'plugins', this.plugin.manifest.id);
 
-        return path.join(pluginDir, 'resources', 'pty-helper');
+        const helperName = process.platform === 'win32' ? 'pty-helper.exe' : 'pty-helper';
+        return path.join(pluginDir, 'resources', helperName);
     }
 
     /**
@@ -152,9 +215,14 @@ export class TerminalView extends ItemView {
      */
     private async startPtyHelper(): Promise<void> {
         const ptyHelperPath = this.getPtyHelperPath();
-
-        // GUI apps can inherit a stale SHELL env; prefer the account's actual login shell.
-        const userShell = os.userInfo().shell || process.env.SHELL || '/bin/bash';
+        const userShell = this.getDefaultShell();
+        const workingDirectory = this.getInitialWorkingDirectory();
+        const contextRuntimePaths = this.plugin.getObsidianContextService()?.getRuntimePaths();
+        const latestContext = this.plugin.getObsidianContextService()?.getLatestSnapshot();
+        const bridgeInfo = this.plugin.getObsidianContextService()?.getBridgeInfo();
+        const contextCliPath = this.getContextCliPath();
+        const contextMcpPath = this.getContextMcpPath();
+        this.shellDisplayName = userShell;
 
         try {
             if (!fs.existsSync(ptyHelperPath)) {
@@ -165,11 +233,26 @@ export class TerminalView extends ItemView {
             // We'll use process.send or a workaround with stdio
 
             this.ptyProcess = spawn(ptyHelperPath, [userShell], {
-                cwd: this.scanner.getVaultPath(),
+                cwd: workingDirectory,
                 env: {
                     ...process.env,
                     TERM: 'xterm-256color',
                     LANG: process.env.LANG || 'en_US.UTF-8',
+                    OBSITERM_INITIAL_CWD: workingDirectory,
+                    OBSITERM_CONTEXT_FILE: contextRuntimePaths?.contextFile ?? '',
+                    OBSITERM_SELECTION_FILE: contextRuntimePaths?.selectionFile ?? '',
+                    OBSITERM_CONTEXT_MCP_CONFIG_FILE: contextRuntimePaths?.mcpConfigFile ?? '',
+                    OBSITERM_ACTIVE_FILE: latestContext?.activeFileAbsolutePath ?? '',
+                    OBSITERM_ACTIVE_FILE_RELATIVE: latestContext?.activeFilePath ?? '',
+                    OBSITERM_CONTEXT_BRIDGE_URL: bridgeInfo?.baseUrl ?? '',
+                    OBSITERM_CONTEXT_BRIDGE_TOKEN: bridgeInfo?.token ?? '',
+                    OBSITERM_CONTEXT_ENDPOINT: bridgeInfo?.contextUrl ?? '',
+                    OBSITERM_SELECTION_ENDPOINT: bridgeInfo?.selectionUrl ?? '',
+                    OBSITERM_ACTIVE_NOTE_ENDPOINT: bridgeInfo?.activeNoteUrl ?? '',
+                    OBSITERM_SELECTION_PROMPT_ENDPOINT: bridgeInfo?.selectionPromptUrl ?? '',
+                    OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT: bridgeInfo?.activeNotePromptUrl ?? '',
+                    OBSITERM_CONTEXT_CLI: contextCliPath,
+                    OBSITERM_CONTEXT_MCP: contextMcpPath,
                     XTERM_INITIAL_COLS: String(this.terminal?.cols ?? 0),
                     XTERM_INITIAL_ROWS: String(this.terminal?.rows ?? 0),
                 },
@@ -178,6 +261,7 @@ export class TerminalView extends ItemView {
 
             this.lastResizeCols = this.terminal?.cols ?? null;
             this.lastResizeRows = this.terminal?.rows ?? null;
+            this.writeLaunchBanner(userShell, workingDirectory);
 
             // Get fd 3 for resize events
             // @ts-ignore - stdio[3] exists when we specify 4 pipes
@@ -229,9 +313,154 @@ export class TerminalView extends ItemView {
             setTimeout(() => this.sendResize(), 100);
 
         } catch (error) {
-            this.terminal?.writeln(`\x1b[31mFailed to start terminal: ${(error as Error).message}\x1b[0m`);
-            this.terminal?.writeln('\x1b[33mMake sure the Rust PTY helper is built and deployed.\x1b[0m');
+            this.writeStartupFailure(error as Error, userShell, ptyHelperPath, workingDirectory);
         }
+    }
+
+    private getDefaultShell(): string {
+        if (this.plugin.settings.shellPath.trim().length > 0) {
+            return this.plugin.settings.shellPath.trim();
+        }
+
+        if (process.platform === 'win32') {
+            const systemRoot = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows';
+            const preferredShells = [
+                process.env.OBSITERM_SHELL,
+                'pwsh.exe',
+                'powershell.exe',
+                path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+                process.env.COMSPEC,
+                'cmd.exe'
+            ];
+
+            for (const shellPath of preferredShells) {
+                if (!shellPath) continue;
+                if (this.commandExists(shellPath)) {
+                    return shellPath;
+                }
+            }
+
+            return 'cmd.exe';
+        }
+
+        // GUI apps can inherit a stale SHELL env; prefer the account's actual login shell.
+        return os.userInfo().shell || process.env.SHELL || '/bin/bash';
+    }
+
+    private commandExists(command: string): boolean {
+        if (path.isAbsolute(command)) {
+            return fs.existsSync(command);
+        }
+
+        const pathEnv = process.env.PATH ?? '';
+        const pathEntries = pathEnv.split(path.delimiter).filter(Boolean);
+        const extensions = process.platform === 'win32'
+            ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+                .split(';')
+                .filter(Boolean)
+            : [''];
+
+        for (const entry of pathEntries) {
+            for (const ext of extensions) {
+                const candidate = path.join(entry, process.platform === 'win32' && path.extname(command) ? command : `${command}${ext}`);
+                if (fs.existsSync(candidate)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private writeLaunchBanner(shellPath: string, workingDirectory: string): void {
+        const shellName = path.basename(shellPath);
+        const trigger = this.getAutocompleteTrigger();
+        const contextRuntimePaths = this.plugin.getObsidianContextService()?.getRuntimePaths();
+        const latestContext = this.plugin.getObsidianContextService()?.getLatestSnapshot();
+        const bridgeInfo = this.plugin.getObsidianContextService()?.getBridgeInfo();
+        const contextCliPath = this.getContextCliPath();
+        const contextMcpPath = this.getContextMcpPath();
+        this.terminal?.writeln(`\x1b[90m[ObsiTerm] shell: ${shellName} | path trigger: ${trigger}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[90m[ObsiTerm] cwd: ${workingDirectory}\x1b[0m`);
+        if (latestContext?.activeFilePath) {
+            this.terminal?.writeln(`\x1b[90m[ObsiTerm] active note: ${latestContext.activeFilePath}\x1b[0m`);
+        }
+        if (contextRuntimePaths) {
+            this.terminal?.writeln(`\x1b[90m[ObsiTerm] context json: ${contextRuntimePaths.contextFile}\x1b[0m`);
+            this.terminal?.writeln(`\x1b[90m[ObsiTerm] selection txt: ${contextRuntimePaths.selectionFile}\x1b[0m`);
+            this.terminal?.writeln(`\x1b[90m[ObsiTerm] mcp config: ${contextRuntimePaths.mcpConfigFile}\x1b[0m`);
+        }
+        if (bridgeInfo) {
+            this.terminal?.writeln(`\x1b[90m[ObsiTerm] context api: ${bridgeInfo.baseUrl}\x1b[0m`);
+        }
+        this.terminal?.writeln(`\x1b[90m[ObsiTerm] context cli: ${contextCliPath}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[90m[ObsiTerm] context mcp: ${contextMcpPath}\x1b[0m`);
+        this.terminal?.writeln('\x1b[90mUse @ path autocomplete, or paste an image to insert a temp file path.\x1b[0m');
+    }
+
+    private getContextCliPath(): string {
+        // @ts-ignore - basePath exists but not in type definitions
+        const vaultPath = this.app.vault.adapter.basePath;
+        const manifestDir = this.plugin.manifest.dir;
+        const pluginDir = manifestDir
+            ? (path.isAbsolute(manifestDir) ? manifestDir : path.join(vaultPath, manifestDir))
+            : path.join(vaultPath, '.obsidian', 'plugins', this.plugin.manifest.id);
+        return path.join(pluginDir, 'resources', 'obsiterm-context.mjs');
+    }
+
+    private getContextMcpPath(): string {
+        // @ts-ignore - basePath exists but not in type definitions
+        const vaultPath = this.app.vault.adapter.basePath;
+        const manifestDir = this.plugin.manifest.dir;
+        const pluginDir = manifestDir
+            ? (path.isAbsolute(manifestDir) ? manifestDir : path.join(vaultPath, manifestDir))
+            : path.join(vaultPath, '.obsidian', 'plugins', this.plugin.manifest.id);
+        return path.join(pluginDir, 'resources', 'obsiterm-mcp.mjs');
+    }
+
+    private writeStartupFailure(error: Error, shellPath: string, ptyHelperPath: string, workingDirectory: string): void {
+        this.terminal?.writeln(`\x1b[31mFailed to start terminal: ${error.message}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[33mShell: ${shellPath}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[33mWorking directory: ${workingDirectory}\x1b[0m`);
+        this.terminal?.writeln(`\x1b[33mHelper: ${ptyHelperPath}\x1b[0m`);
+        this.terminal?.writeln('\x1b[33mCheck the shell setting, rebuild the helper, or redeploy the plugin.\x1b[0m');
+        new Notice(`ObsiTerm failed to start terminal: ${error.message}`, 5000);
+    }
+
+    private getInitialWorkingDirectory(): string {
+        const vaultPath = this.scanner.getVaultPath();
+        const configuredPath = this.plugin.settings.initialWorkingDirectory.trim();
+        if (!configuredPath) {
+            return vaultPath;
+        }
+
+        const expandedPath = this.expandHomeDirectory(configuredPath);
+        const resolvedPath = path.isAbsolute(expandedPath)
+            ? expandedPath
+            : path.resolve(vaultPath, expandedPath);
+
+        try {
+            const stats = fs.statSync(resolvedPath);
+            if (stats.isDirectory()) {
+                return resolvedPath;
+            }
+        } catch {
+            // Fall back to the vault root when the configured path does not exist.
+        }
+
+        return vaultPath;
+    }
+
+    private expandHomeDirectory(targetPath: string): string {
+        if (targetPath === '~') {
+            return os.homedir();
+        }
+
+        if (targetPath.startsWith('~/') || targetPath.startsWith('~\\')) {
+            return path.join(os.homedir(), targetPath.slice(2));
+        }
+
+        return targetPath;
     }
 
     /**
@@ -272,6 +501,33 @@ export class TerminalView extends ItemView {
         });
     }
 
+    public sendTextToTerminal(text: string): void {
+        if (!this.terminal) return;
+        this.terminal.focus();
+        this.autocomplete?.deactivate();
+        this.terminal.paste(text);
+    }
+
+    public sendCurrentSelectionToTerminal(selection: string): void {
+        if (!selection) return;
+        this.sendTextToTerminal(this.formatSelectionPayload(selection));
+    }
+
+    public sendActiveFilePathToTerminal(absolutePath: string): void {
+        if (!absolutePath) return;
+        this.sendTextToTerminal(this.formatActiveFilePayload(absolutePath));
+    }
+
+    public sendContextSummaryToTerminal(summary: string): void {
+        if (!summary) return;
+        this.sendTextToTerminal(this.formatContextSummaryPayload(summary));
+    }
+
+    public sendClaudePromptToTerminal(prompt: string): void {
+        if (!prompt) return;
+        this.sendTextToTerminal(this.formatClaudePromptPayload(prompt));
+    }
+
     /**
      * Handle system paste so text goes through xterm's paste path and
      * clipboard images become temporary files that terminal tools can read.
@@ -287,6 +543,87 @@ export class TerminalView extends ItemView {
             },
             { capture: true }
         );
+    }
+
+    private registerClipboardShortcuts(): void {
+        if (!this.terminal) return;
+
+        this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+            return this.handleClipboardShortcut(event);
+        });
+    }
+
+    private handleClipboardShortcut(event: KeyboardEvent): boolean {
+        if (event.type !== 'keydown') {
+            return true;
+        }
+
+        const isPrimaryModifier = event.ctrlKey || event.metaKey;
+        const key = event.key.toLowerCase();
+
+        if ((isPrimaryModifier && key === 'c') || (event.ctrlKey && event.shiftKey && key === 'c')) {
+            if (!this.terminal?.hasSelection()) {
+                return true;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            void this.copyTerminalSelection();
+            return false;
+        }
+
+        if ((isPrimaryModifier && key === 'v') || (event.ctrlKey && event.shiftKey && key === 'v')) {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.pasteClipboardText();
+            return false;
+        }
+
+        if (event.shiftKey && key === 'insert') {
+            event.preventDefault();
+            event.stopPropagation();
+            void this.pasteClipboardText();
+            return false;
+        }
+
+        if (event.ctrlKey && key === 'insert') {
+            if (!this.terminal?.hasSelection()) {
+                return true;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+            void this.copyTerminalSelection();
+            return false;
+        }
+
+        return true;
+    }
+
+    private async copyTerminalSelection(): Promise<void> {
+        const selection = this.terminal?.getSelection() ?? '';
+        if (!selection) return;
+
+        try {
+            await navigator.clipboard.writeText(selection);
+            this.terminal?.clearSelection();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to copy terminal selection: ${message}`, 3000);
+        }
+    }
+
+    private async pasteClipboardText(): Promise<void> {
+        try {
+            const text = await navigator.clipboard.readText();
+            if (!text) return;
+            this.autocomplete?.deactivate();
+            this.inputBuffer = text.includes('\n') || text.includes('\r') ? '' : this.inputBuffer + text;
+            this.terminal?.paste(text);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            new Notice(`Failed to paste clipboard text: ${message}`, 3000);
+        }
     }
 
     private async handlePasteEvent(event: ClipboardEvent): Promise<void> {
@@ -367,7 +704,7 @@ export class TerminalView extends ItemView {
             this.outputAnsiBuffer = combined.slice(incompleteSequenceStart);
         }
 
-        return this.stripBackgroundColors(completeOutput);
+        return this.stripBackgroundColors(this.stripMouseTrackingSequences(completeOutput));
     }
 
     private findIncompleteAnsiSequenceStart(output: string): number {
@@ -389,6 +726,10 @@ export class TerminalView extends ItemView {
             const filteredParams = this.filterSgrParams(rawParams);
             return filteredParams === null ? '' : `\x1b[${filteredParams}m`;
         });
+    }
+
+    private stripMouseTrackingSequences(output: string): string {
+        return output.replace(/\x1b\[\?(?:9|1000|1002|1003|1004|1005|1006|1015|1016)[hl]/g, '');
     }
 
     private filterSgrParams(rawParams: string): string | null {
@@ -569,6 +910,16 @@ export class TerminalView extends ItemView {
         this.foregroundCommands = [];
         this.contentEl.style.backgroundColor = '';
         this.contentEl.style.padding = '';
+        this.unsubscribeContext?.();
+        this.unsubscribeContext = null;
+        this.statusBarEl?.remove();
+        this.statusBarEl = null;
+        this.statusHintEl = null;
+        this.statusSelectionEl = null;
+        this.statusContextEl = null;
+        this.statusActionsEl = null;
+        this.sendSelectionPromptButtonEl = null;
+        this.sendActiveNotePromptButtonEl = null;
         this.resizeObserver?.disconnect();
         this.resizeObserver = null;
         if (this.fitFrame !== null) {
@@ -730,6 +1081,7 @@ export class TerminalView extends ItemView {
                 .map((command) => command.trim())
                 .filter((command) => command.length > 0);
             this.foregroundCommands = commands;
+            this.updateStatusBar(this.plugin.getObsidianContextService()?.getLatestSnapshot() ?? null);
         }
     }
 
@@ -742,6 +1094,126 @@ export class TerminalView extends ItemView {
         return normalized.includes('claude')
             || normalized.includes('codex')
             || normalized.includes('gemini');
+    }
+
+    private bindContextStatus(): void {
+        this.unsubscribeContext?.();
+        const contextService = this.plugin.getObsidianContextService();
+        if (!contextService) {
+            return;
+        }
+
+        this.unsubscribeContext = contextService.subscribe((snapshot) => {
+            this.updateStatusBar(snapshot);
+        });
+    }
+
+    private updateStatusBar(snapshot: ObsidianContextSnapshot | null): void {
+        if (!this.statusBarEl || !this.statusHintEl || !this.statusSelectionEl || !this.statusContextEl) {
+            return;
+        }
+
+        if (this.hasTerminalSelection) {
+            this.pendingContextSnapshot = snapshot;
+            return;
+        }
+
+        const agentCliInForeground = this.isAgentCliInForeground();
+        this.statusBarEl.toggleClass('is-agent-active', agentCliInForeground);
+        this.statusHintEl.setText(agentCliInForeground ? '? for shortcuts' : 'Obsidian context');
+
+        if (!snapshot) {
+            this.statusSelectionEl.setText('No note context');
+            this.statusContextEl.setText('');
+            return;
+        }
+
+        this.statusSelectionEl.setText(
+            snapshot.hasSelection
+                ? `${snapshot.selectedLineCount} line${snapshot.selectedLineCount === 1 ? '' : 's'} selected`
+                : 'No current selection'
+        );
+        this.statusContextEl.setText(snapshot.activeFilePath ?? 'No active note');
+        if (this.sendSelectionPromptButtonEl) {
+            this.sendSelectionPromptButtonEl.disabled = !snapshot.hasSelection;
+        }
+        if (this.sendActiveNotePromptButtonEl) {
+            this.sendActiveNotePromptButtonEl.disabled = !snapshot.activeFileAbsolutePath;
+        }
+    }
+
+    private formatSelectionPayload(selection: string): string {
+        if (this.isPowerShellShell()) {
+            return `$obsitermSelection = @'\r\n${this.normalizeForPowerShell(selection)}\r\n'@\r\n`;
+        }
+
+        if (this.isPosixShell()) {
+            return `export OBSITERM_SELECTION=$(cat <<'EOF'\n${selection}\nEOF\n)\n`;
+        }
+
+        return `${selection}\n`;
+    }
+
+    private formatActiveFilePayload(absolutePath: string): string {
+        if (this.isPowerShellShell()) {
+            return `$obsitermActiveFile = '${this.escapePowerShellSingleQuoted(absolutePath)}'\r\n`;
+        }
+
+        if (this.isPosixShell()) {
+            return `export OBSITERM_ACTIVE_FILE='${this.escapePosixSingleQuoted(absolutePath)}'\n`;
+        }
+
+        return `${absolutePath.includes(' ') ? `"${absolutePath}"` : absolutePath}\n`;
+    }
+
+    private formatContextSummaryPayload(summary: string): string {
+        if (this.isPowerShellShell()) {
+            return `$obsitermContext = @'\r\n${this.normalizeForPowerShell(summary)}\r\n'@\r\n`;
+        }
+
+        if (this.isPosixShell()) {
+            return `export OBSITERM_CONTEXT=$(cat <<'EOF'\n${summary}\nEOF\n)\n`;
+        }
+
+        return `${summary}\n`;
+    }
+
+    private formatClaudePromptPayload(prompt: string): string {
+        if (this.isAgentCliInForeground()) {
+            return `${prompt}\r\n`;
+        }
+
+        if (this.isPowerShellShell()) {
+            return `$obsitermClaudePrompt = @'\r\n${this.normalizeForPowerShell(prompt)}\r\n'@\r\n`;
+        }
+
+        if (this.isPosixShell()) {
+            return `export OBSITERM_CLAUDE_PROMPT=$(cat <<'EOF'\n${prompt}\nEOF\n)\n`;
+        }
+
+        return `${prompt}\n`;
+    }
+
+    private isPowerShellShell(): boolean {
+        const shellName = path.basename(this.shellDisplayName || '').toLowerCase();
+        return shellName === 'powershell.exe' || shellName === 'pwsh.exe' || shellName === 'powershell' || shellName === 'pwsh';
+    }
+
+    private isPosixShell(): boolean {
+        const shellName = path.basename(this.shellDisplayName || '').toLowerCase();
+        return shellName === 'bash' || shellName === 'zsh' || shellName === 'sh' || shellName === 'fish';
+    }
+
+    private escapePowerShellSingleQuoted(value: string): string {
+        return value.replace(/'/g, "''");
+    }
+
+    private normalizeForPowerShell(value: string): string {
+        return value.replace(/\r?\n/g, '\r\n');
+    }
+
+    private escapePosixSingleQuoted(value: string): string {
+        return value.replace(/'/g, `'\\''`);
     }
 
     private getVisibleCursorTheme(theme: TerminalTheme): TerminalTheme {
