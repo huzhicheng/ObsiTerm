@@ -38,6 +38,16 @@ The release script will:
 4. Create or update GitHub Release `v<version>`
 5. Upload the platform zip asset
 
+Also verify that the bundle includes the context integration resources:
+
+- `resources/obsiterm-context.mjs`
+- `resources/obsiterm-mcp.mjs`
+
+These files are required for:
+
+- runtime context CLI access
+- optional Claude Code MCP integration
+
 ## Dry Run
 
 ```bash
@@ -78,3 +88,18 @@ npm run release:github -- --notes-file ./notes.md
 3. Commit and push
 4. Run `npm run release:github`
 5. Verify the uploaded asset on GitHub
+
+## Distribution Notes
+
+Users get two layers of functionality:
+
+1. Out of the box after installing the plugin release:
+   - terminal
+   - note and selection runtime files
+   - prompt buttons and command palette actions
+   - HTTP context bridge
+   - bundled CLI wrapper
+2. Optional extra setup for Claude Code tool calling:
+   - users must register `resources/obsiterm-mcp.mjs` in their local Claude Code MCP config
+
+So the plugin release should ship the MCP server, but users still need a local Claude-side configuration step if they want Claude Code to call `get_current_selection` and related tools directly.

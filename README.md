@@ -38,6 +38,30 @@ Download the asset for your platform from the [Releases](https://github.com/Youk
 
 Extract the archive and copy the `obsidian-term` folder into your vault's `.obsidian/plugins/` directory.
 
+### What Works Out Of The Box
+
+After installing the plugin itself, these features work without any extra Claude or MCP setup:
+
+- embedded terminal in Obsidian
+- `@` path autocomplete
+- initial directory support
+- active note and selection runtime files
+- context bridge HTTP endpoints
+- prompt buttons and command palette actions such as `Send Selection` and `Send Note`
+- the bundled CLI wrapper:
+  - `resources/obsiterm-context.mjs`
+
+Users can already pass note context into terminal workflows without configuring MCP.
+
+### What Requires Extra Claude Setup
+
+The bundled MCP server is included in the plugin package, but Claude Code will not discover it automatically. Users who want Claude Code to call tools like `get_current_selection` or `get_obsidian_context` must add the MCP server to Claude Code separately.
+
+Bundled files:
+
+- `resources/obsiterm-context.mjs`
+- `resources/obsiterm-mcp.mjs`
+
 ### Manual Development Install
 
 1. Clone the repository into your vault plugin directory or anywhere else on disk.
@@ -61,6 +85,8 @@ npm run build
 - `themes/`
 - `resources/pty-helper` on macOS
 - `resources/pty-helper.exe` on Windows
+- `resources/obsiterm-context.mjs`
+- `resources/obsiterm-mcp.mjs`
 
 ## Local Deploy
 
@@ -257,6 +283,23 @@ Example MCP config:
   }
 }
 ```
+
+A ready-to-edit example file is also included in this repository:
+
+- [examples/claude-code-obsiterm-mcp.json](/E:/Development/Github/ObsiTerm/examples/claude-code-obsiterm-mcp.json)
+
+Typical Claude Code setup on another machine:
+
+1. Install the latest ObsiTerm release in Obsidian.
+2. Open a terminal inside ObsiTerm at least once so the runtime bridge is available.
+3. Copy the template above into Claude Code's MCP config and replace the vault path with the local vault path on that machine.
+4. Start Claude Code from inside the ObsiTerm terminal.
+5. Run `/mcp` in Claude Code and confirm that `obsiterm` is connected.
+
+Important:
+
+- the plugin ships the MCP server file, but the Claude-side MCP registration is still optional and machine-local
+- without Claude MCP setup, users can still use the built-in buttons, commands, runtime files, HTTP bridge, and CLI wrapper
 
 Command palette helpers:
 

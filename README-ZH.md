@@ -15,7 +15,7 @@
 
 ## 概览
 
-`ObsiTerm` 会在 Obsidian Desktop 的右侧边栏中打开一个真实终端。目前同一套源码同时支持 macOS 和 Windows。
+`ObsiTerm` 会在 Obsidian Desktop 的右侧边栏中打开一个真实终端。当前同一套源码同时支持 macOS 和 Windows。
 
 ## 功能
 
@@ -25,7 +25,8 @@
 - 支持 Ghostty 主题兼容和内置主题
 - 可配置字体、字号、补全触发符、shell 命令、初始目录
 - 支持粘贴大段文本，或将图片粘贴成临时文件路径
-- 会把当前笔记路径和选中文本同步到终端可读取的运行时文件
+- 可同步当前笔记、当前选区、当前行、光标位置等上下文
+- 内置 HTTP bridge、CLI 和 MCP server，便于终端工具读取 Obsidian 上下文
 
 ## 安装
 
@@ -33,10 +34,35 @@
 
 从 [Releases](https://github.com/Youket/ObsiTerm/releases) 页面下载对应平台的压缩包：
 
-- `ObsiTerm-macos-...zip`：macOS
-- `ObsiTerm-windows-...zip`：Windows
+- `ObsiTerm-macos-...zip`
+- `ObsiTerm-windows-...zip`
 
 解压后，将 `obsidian-term` 文件夹复制到你的 vault 的 `.obsidian/plugins/` 目录下。
+
+### 开箱即用的功能
+
+只要安装好插件本身，不需要额外配置 Claude 或 MCP，下列功能就可以直接使用：
+
+- Obsidian 内嵌终端
+- `@` 路径补全
+- 初始目录设置
+- 当前笔记 / 选区运行时文件
+- context bridge HTTP 接口
+- `Send Selection` / `Send Note` 按钮和命令面板动作
+- 内置 CLI：
+  - `resources/obsiterm-context.mjs`
+
+也就是说，即使不配置 MCP，用户也能把 Obsidian 上下文传递给终端工作流。
+
+### 需要额外 Claude 配置的部分
+
+插件包里已经带有 MCP server，但 Claude Code 不会自动发现它。  
+如果用户想让 Claude Code 直接调用 `get_current_selection`、`get_obsidian_context` 这类工具，还需要在 Claude Code 本地额外配置 MCP。
+
+插件内置的相关文件：
+
+- `resources/obsiterm-context.mjs`
+- `resources/obsiterm-mcp.mjs`
 
 ### 本地开发安装
 
@@ -59,8 +85,10 @@ npm run build
 - `manifest.json`
 - `styles.css`
 - `themes/`
-- macOS：`resources/pty-helper`
-- Windows：`resources/pty-helper.exe`
+- `resources/pty-helper`（macOS）
+- `resources/pty-helper.exe`（Windows）
+- `resources/obsiterm-context.mjs`
+- `resources/obsiterm-mcp.mjs`
 
 ## 本地部署
 
@@ -80,19 +108,15 @@ npm run deploy
 
 - `npm run build`
 - 刷新 `releases/<platform>/obsidian-term`
-- 如果设置了 `OBSIDIAN_PLUGIN_DIR`，则把插件包同步到本地 Obsidian 插件目录
-
-仓库中的 `deploy.sh` 现在只是 Unix shell 的兼容包装，推荐统一使用 `npm run deploy`。
+- 如果设置了 `OBSIDIAN_PLUGIN_DIR`，则把插件包复制到本地 Obsidian 插件目录
 
 ## GitHub 发布
 
-推荐使用跨平台命令：
+推荐使用：
 
 ```bash
 npm run release:github
 ```
-
-这个命令会把当前平台的 `releases/<platform>/obsidian-term` 打包成 zip，并上传到 GitHub Releases。
 
 常用选项：
 
@@ -103,12 +127,6 @@ npm run release:github -- --prerelease
 npm run release:github -- --platform windows
 npm run release:github -- --platform macos
 ```
-
-注意：
-
-- Windows 资源包应在 Windows 上构建
-- macOS 资源包应在 macOS 上构建
-- 发布前需要先安装并登录 `gh`
 
 ## 使用
 
@@ -127,58 +145,50 @@ npm run release:github -- --platform macos
 
 ### 初始目录
 
-如果你希望新终端标签默认从用户目录之外的位置启动，可以使用 `Initial Directory / 初始目录` 设置。
+使用 `Initial Directory / 初始目录` 设置新终端标签默认启动位置：
 
-- 留空时，终端从 vault 根目录启动
-- 可填写相对路径，例如 `.` 或 `./scripts`，相对于 vault 根目录解析
-- 可填写绝对路径，例如 `E:\Projects` 或 `/Users/name/Projects`
+- 留空：从 vault 根目录启动
+- 相对路径：如 `.`、`./scripts`
+- 绝对路径：如 `E:\Projects` 或 `/Users/name/Projects`
 - `~`、`~/...`、`~\...` 会展开到当前用户目录
 
-如果配置的目录不存在，ObsiTerm 会自动回退到 vault 根目录。
+如果目录不存在，会回退到 vault 根目录。
 
 ### 打开终端
 
-点击左侧边栏中的 `New Terminal` 图标。
+点击左侧边栏里的 `New Terminal` 图标。
 
 ### `@` 自动补全
 
 1. 输入 `@`
 2. 继续输入关键字
-3. 使用方向键选择
+3. 用方向键选择
 4. 按 `Tab` 或 `Enter` 确认
 5. 按 `Esc` 取消
 
-选中的项目会直接插入为绝对路径。
+选中项会插入为绝对路径。
 
 ### 当前笔记与选区上下文
 
-ObsiTerm 会把当前笔记上下文写入终端可读取的运行时文件：
+ObsiTerm 会把当前笔记上下文写入运行时文件：
 
-- `OBSITERM_CONTEXT_FILE`：当前笔记、光标、选区等信息的 JSON 快照
-- `OBSITERM_SELECTION_FILE`：当前选中文本的纯文本文件
-- `OBSITERM_ACTIVE_FILE`：终端标签打开时的当前笔记绝对路径
-- `OBSITERM_CONTEXT_BRIDGE_URL`：供终端工具按需查询的本地只读 HTTP bridge
-- `OBSITERM_CONTEXT_BRIDGE_TOKEN`：访问本地 bridge 所需的 bearer token
+- `OBSITERM_CONTEXT_FILE`
+- `OBSITERM_SELECTION_FILE`
+- `OBSITERM_ACTIVE_FILE`
+- `OBSITERM_CONTEXT_BRIDGE_URL`
+- `OBSITERM_CONTEXT_BRIDGE_TOKEN`
+- `OBSITERM_CONTEXT_MCP_CONFIG_FILE`
 
-当你在 Obsidian 中切换笔记、编辑内容或修改选区时，JSON 文件会持续更新。
-
-终端中常见的读取方式：
-
-```bash
-cat "$OBSITERM_CONTEXT_FILE"
-cat "$OBSITERM_SELECTION_FILE"
-```
-
-Windows PowerShell：
+PowerShell 示例：
 
 ```powershell
 Get-Content $env:OBSITERM_CONTEXT_FILE
 Get-Content $env:OBSITERM_SELECTION_FILE
 ```
 
-### 上下文 bridge API
+### Context bridge API
 
-除了运行时文件外，ObsiTerm 还会暴露一个本地只读 HTTP bridge。这样终端工具可以在需要时主动查询当前笔记与选区，而不只是被动读取文件。
+ObsiTerm 还会暴露一个本地只读 HTTP bridge，终端工具可以按需查询当前上下文。
 
 可用接口：
 
@@ -199,15 +209,6 @@ Invoke-RestMethod -Headers $headers $env:OBSITERM_SELECTION_ENDPOINT
 Invoke-RestMethod -Headers $headers $env:OBSITERM_CONTEXT_ENDPOINT
 ```
 
-POSIX shell 示例：
-
-```bash
-curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_SELECTION_ENDPOINT"
-curl -H "Authorization: Bearer $OBSITERM_CONTEXT_BRIDGE_TOKEN" "$OBSITERM_CONTEXT_ENDPOINT"
-```
-
-`/prompts/*` 这组接口会返回带 `prompt` 字段的 JSON，适合 Claude Code 或其他 agent CLI 在需要时按需获取当前 Obsidian 上下文提示词。
-
 CLI 示例：
 
 ```powershell
@@ -217,7 +218,59 @@ node $env:OBSITERM_CONTEXT_CLI selection-prompt --text
 node $env:OBSITERM_CONTEXT_CLI mcp-config
 ```
 
-命令面板里的辅助命令：
+### MCP server（给 Claude Code / Codex 等工具）
+
+ObsiTerm 还打包了一个最小可用的 `stdio` MCP server，会复用本地 context bridge，将当前笔记和选区暴露成 MCP tools。
+
+可用 tools：
+
+- `get_obsidian_context`
+- `get_current_selection`
+- `get_active_note`
+- `get_selection_prompt`
+- `get_active_note_prompt`
+
+PowerShell 查看环境变量：
+
+```powershell
+$env:OBSITERM_CONTEXT_MCP
+$env:OBSITERM_CONTEXT_BRIDGE_TOKEN
+Get-Content -Raw $env:OBSITERM_CONTEXT_MCP_CONFIG_FILE
+```
+
+MCP 配置示例：
+
+```json
+{
+  "mcpServers": {
+    "obsiterm": {
+      "command": "node",
+      "args": ["E:/YourVault/.obsidian/plugins/ObsiTerm/resources/obsiterm-mcp.mjs"]
+    }
+  }
+}
+```
+
+仓库里还提供了一个可直接修改的示例文件：
+
+- [examples/claude-code-obsiterm-mcp.json](/E:/Development/Github/ObsiTerm/examples/claude-code-obsiterm-mcp.json)
+
+另一台机器上接入 Claude Code 的常见步骤：
+
+1. 在 Obsidian 中安装最新 ObsiTerm
+2. 至少在 ObsiTerm 里打开一次终端，让运行时 bridge 启动
+3. 把示例 MCP 配置写入 Claude Code，并把 vault 路径改成那台机器的本地路径
+4. 从 ObsiTerm 终端内部启动 Claude Code
+5. 在 Claude Code 里运行 `/mcp`，确认 `obsiterm` 已连接
+
+注意：
+
+- 插件 release 会带上 MCP server 脚本，但 Claude 侧的 MCP 注册仍然是可选、且机器本地的步骤
+- 如果不配置 Claude MCP，用户依然可以使用按钮、命令、运行时文件、HTTP bridge 和 CLI
+
+### 命令面板与状态栏
+
+命令面板可用动作包括：
 
 - `ObsiTerm: Copy Obsidian Context File Path`
 - `ObsiTerm: Copy Current Note Selection`
@@ -227,60 +280,19 @@ node $env:OBSITERM_CONTEXT_CLI mcp-config
 - `ObsiTerm: Send Current Selection As Claude Prompt`
 - `ObsiTerm: Send Active Note As Claude Prompt`
 
-### 终端上下文状态栏
+顶部状态栏会显示：
 
-参考 Claude Code 的 IDE footer，每个终端视图顶部都有一条由宿主侧渲染的轻量状态栏。
-
-- 显示当前 Obsidian 选中的行数
-- 显示当前活动笔记路径
-- 当前台检测到 Claude Code、Codex CLI 或 Gemini CLI 时，提示会切换成 `? for shortcuts`
-- 右上角提供 `Send Selection` 和 `Send Note` 按钮，可直接发送 Claude 风格的 prompt
-
-这个设计的目的是让 Obsidian 侧上下文保持可见，而不必要求终端工具先手动读取运行时文件。
+- 选中行数
+- 当前活动笔记路径
+- `Send Selection`
+- `Send Note`
 
 ## 开发说明
 
 - `npm run build` 会同时构建 TypeScript 插件和原生 PTY helper
-- 修改代码后，推荐执行 `npm run deploy`
-- 如果 Windows 提示 `resources/pty-helper.exe` 被占用，先关闭 Obsidian，再重新构建以刷新 helper
+- `npm run deploy` 是推荐的本地工作流
+- 如果 Windows 提示 `resources/pty-helper.exe` 被占用，先关闭 Obsidian 再重试
 
 ## 许可证
-
-### MCP server（给 Claude Code / Codex 等工具）
-
-ObsiTerm 现在还会打包一个最小可用的 `stdio` MCP server，它会复用本地 context bridge，把当前笔记和选区暴露成 MCP tools。
-
-可用 tools：
-- `get_obsidian_context`
-- `get_current_selection`
-- `get_active_note`
-- `get_selection_prompt`
-- `get_active_note_prompt`
-
-PowerShell 查看环境变量：
-```powershell
-$env:OBSITERM_CONTEXT_MCP
-$env:OBSITERM_CONTEXT_BRIDGE_TOKEN
-```
-
-MCP 配置示例：
-```json
-{
-  "mcpServers": {
-    "obsiterm": {
-      "command": "node",
-      "args": ["E:/Obsidian/obsidian_private/.obsidian/plugins/ObsiTerm/resources/obsiterm-mcp.mjs"],
-      "env": {
-        "OBSITERM_CONTEXT_BRIDGE_TOKEN": "...",
-        "OBSITERM_CONTEXT_ENDPOINT": "...",
-        "OBSITERM_SELECTION_ENDPOINT": "...",
-        "OBSITERM_ACTIVE_NOTE_ENDPOINT": "...",
-        "OBSITERM_SELECTION_PROMPT_ENDPOINT": "...",
-        "OBSITERM_ACTIVE_NOTE_PROMPT_ENDPOINT": "..."
-      }
-    }
-  }
-}
-```
 
 MIT
