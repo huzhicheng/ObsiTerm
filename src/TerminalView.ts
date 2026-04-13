@@ -44,6 +44,12 @@ export class TerminalView extends ItemView {
     private unsubscribeContext: (() => void) | null = null;
     private hasTerminalSelection = false;
     private pendingContextSnapshot: ObsidianContextSnapshot | null = null;
+    private mouseSelectionOverride: {
+        startX: number;
+        startY: number;
+        previousDisableStdin: boolean;
+        moved: boolean;
+    } | null = null;
 
     constructor(leaf: WorkspaceLeaf, plugin: XTermTerminalPlugin) {
         super(leaf);
@@ -181,6 +187,7 @@ export class TerminalView extends ItemView {
 
         this.registerPasteHandling();
         this.registerClipboardShortcuts();
+        this.registerMouseSelectionOverride();
 
         this.setupResizeHandling();
         this.bindContextStatus();
@@ -551,6 +558,74 @@ export class TerminalView extends ItemView {
         this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
             return this.handleClipboardShortcut(event);
         });
+    }
+
+    private registerMouseSelectionOverride(): void {
+        if (!this.terminal || !this.terminalContainer) return;
+
+        this.registerDomEvent(
+            this.terminalContainer,
+            'mousedown',
+            (event: MouseEvent) => this.handleMouseSelectionPointerDown(event),
+            { capture: true }
+        );
+
+        this.registerDomEvent(
+            window,
+            'mousemove',
+            (event: MouseEvent) => this.handleMouseSelectionPointerMove(event),
+            { capture: true }
+        );
+
+        this.registerDomEvent(
+            window,
+            'mouseup',
+            () => this.releaseMouseSelectionOverride(),
+            { capture: true }
+        );
+
+        this.registerDomEvent(
+            window,
+            'blur',
+            () => this.releaseMouseSelectionOverride()
+        );
+    }
+
+    private handleMouseSelectionPointerDown(event: MouseEvent): void {
+        if (!this.terminal) return;
+        if (event.button !== 0) return;
+        if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        if (this.terminal.modes.mouseTrackingMode === 'none') return;
+
+        this.mouseSelectionOverride = {
+            startX: event.clientX,
+            startY: event.clientY,
+            previousDisableStdin: this.terminal.options.disableStdin,
+            moved: false
+        };
+        this.terminal.options.disableStdin = true;
+    }
+
+    private handleMouseSelectionPointerMove(event: MouseEvent): void {
+        if (!this.mouseSelectionOverride) return;
+
+        const moveX = Math.abs(event.clientX - this.mouseSelectionOverride.startX);
+        const moveY = Math.abs(event.clientY - this.mouseSelectionOverride.startY);
+        if (moveX >= 3 || moveY >= 3) {
+            this.mouseSelectionOverride.moved = true;
+        }
+    }
+
+    private releaseMouseSelectionOverride(): void {
+        if (!this.terminal || !this.mouseSelectionOverride) return;
+
+        const previousDisableStdin = this.mouseSelectionOverride.previousDisableStdin;
+        this.mouseSelectionOverride = null;
+
+        window.setTimeout(() => {
+            if (!this.terminal) return;
+            this.terminal.options.disableStdin = previousDisableStdin;
+        }, 0);
     }
 
     private handleClipboardShortcut(event: KeyboardEvent): boolean {
