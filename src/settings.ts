@@ -14,15 +14,33 @@ export interface TerminalSettings {
     autocompleteTrigger: string;
     shellPath: string;
     initialWorkingDirectory: string;
+    compatibilityMode: boolean;
+}
+
+function getDefaultFontFamily(): string {
+    if (process.platform === 'win32') {
+        return '"Cascadia Mono", "Cascadia Code", Consolas, "Courier New", monospace';
+    }
+
+    if (process.platform === 'darwin') {
+        return 'Menlo, Monaco, "SF Mono", "Courier New", monospace';
+    }
+
+    return '"DejaVu Sans Mono", "Liberation Mono", "Noto Sans Mono", "Courier New", monospace';
+}
+
+function getRecommendedFontFamily(): string {
+    return getDefaultFontFamily();
 }
 
 export const DEFAULT_SETTINGS: TerminalSettings = {
     themeName: '',
     fontSize: 14,
-    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+    fontFamily: getDefaultFontFamily(),
     autocompleteTrigger: '@',
     shellPath: '',
-    initialWorkingDirectory: ''
+    initialWorkingDirectory: '',
+    compatibilityMode: true
 };
 
 export class TerminalSettingTab extends PluginSettingTab {
@@ -181,6 +199,20 @@ export class TerminalSettingTab extends PluginSettingTab {
                     });
             });
 
+        new Setting(containerEl)
+            .setName(this.t('compatibilityMode'))
+            .setDesc(this.t('compatibilityModeDesc'))
+            .addToggle((toggle) => {
+                toggle
+                    .setValue(this.plugin.settings.compatibilityMode)
+                    .onChange(async (value) => {
+                        if (value === this.plugin.settings.compatibilityMode) return;
+                        this.plugin.settings.compatibilityMode = value;
+                        await this.plugin.saveSettings();
+                        this.plugin.applySettingsToAllTerminals();
+                    });
+            });
+
         const fontSetting = new Setting(containerEl)
             .setName(this.t('fontFamily'))
             .setDesc(this.t('fontFamilyDesc'))
@@ -199,6 +231,19 @@ export class TerminalSettingTab extends PluginSettingTab {
                                 this.display();
                             }
                         }).open();
+                    });
+            })
+            .addButton((button) => {
+                button
+                    .setButtonText(this.t('useRecommendedFont'))
+                    .onClick(async () => {
+                        const recommendedFont = getRecommendedFontFamily();
+                        if (recommendedFont === this.plugin.settings.fontFamily) return;
+                        this.plugin.settings.fontFamily = recommendedFont;
+                        await this.plugin.saveSettings();
+                        this.plugin.applySettingsToAllTerminals();
+                        this.updatePreview();
+                        this.display();
                     });
             })
             .addExtraButton((button) => {
@@ -314,8 +359,11 @@ type TranslationKey =
     | 'shellPathDesc'
     | 'initialWorkingDirectory'
     | 'initialWorkingDirectoryDesc'
+    | 'compatibilityMode'
+    | 'compatibilityModeDesc'
     | 'fontFamily'
     | 'fontFamilyDesc'
+    | 'useRecommendedFont'
     | 'loadingFonts'
     | 'fontFamilyLoaded'
     | 'reloadFonts'
@@ -345,8 +393,11 @@ const EN: Record<TranslationKey, string> = {
     shellPathDesc: 'Optional shell override. Leave empty to auto-detect the best shell for the current platform.',
     initialWorkingDirectory: 'Initial Directory',
     initialWorkingDirectoryDesc: 'Optional terminal startup directory. Leave empty to start in the vault root. Relative paths are resolved from the vault root.',
+    compatibilityMode: 'Terminal Compatibility Mode',
+    compatibilityModeDesc: 'Prioritize Unicode logos, box-drawing, and mixed glyph alignment over tighter spacing. This also disables xterm custom glyph rendering for more predictable fallback behavior.',
     fontFamily: 'Font Family',
-    fontFamilyDesc: 'Pick a local installed font from a searchable modal.',
+    fontFamilyDesc: 'Pick a local installed monospace font. For CLI logos and box-drawing alignment, prefer terminal-oriented fonts such as Cascadia Mono, SF Mono, Menlo, or Consolas.',
+    useRecommendedFont: 'Use Recommended',
     loadingFonts: 'Loading installed fonts...',
     fontFamilyLoaded: '{count} local font families available',
     reloadFonts: 'Reload installed fonts',
@@ -377,8 +428,11 @@ const ZH: Record<TranslationKey, string> = {
     shellPathDesc: '可选的 shell 覆盖值。留空时会按当前平台自动选择最合适的 shell。',
     initialWorkingDirectory: '初始目录',
     initialWorkingDirectoryDesc: '可选的终端启动目录。留空时默认使用 vault 根目录，相对路径会相对于 vault 根目录解析。',
+    compatibilityMode: '终端兼容模式',
+    compatibilityModeDesc: '优先保证 Unicode logo、边框字符和混合字形对齐，而不是追求更紧凑的排版。同时会关闭 xterm 的 custom glyph 渲染，以获得更稳定的回退字体行为。',
     fontFamily: '字体族',
-    fontFamilyDesc: '从可搜索的弹窗中选择本机已安装字体。',
+    fontFamilyDesc: '从可搜索弹窗中选择本机已安装的等宽字体。若要改善 Claude 等 CLI 的 logo、边框和特殊字符对齐，优先选择 Cascadia Mono、SF Mono、Menlo、Consolas 等终端友好字体。',
+    useRecommendedFont: '使用推荐字体',
     loadingFonts: '正在加载本机字体...',
     fontFamilyLoaded: '可用字体族：{count}',
     reloadFonts: '重新加载本机字体',

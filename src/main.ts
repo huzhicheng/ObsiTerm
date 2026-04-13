@@ -163,7 +163,10 @@ export default class XTermTerminalPlugin extends Plugin {
             shellPath: typeof rawData.shellPath === 'string' ? rawData.shellPath.trim() : DEFAULT_SETTINGS.shellPath,
             initialWorkingDirectory: typeof rawData.initialWorkingDirectory === 'string'
                 ? rawData.initialWorkingDirectory.trim()
-                : DEFAULT_SETTINGS.initialWorkingDirectory
+                : DEFAULT_SETTINGS.initialWorkingDirectory,
+            compatibilityMode: typeof rawData.compatibilityMode === 'boolean'
+                ? rawData.compatibilityMode
+                : DEFAULT_SETTINGS.compatibilityMode
         };
 
         this.bundledThemes = await loadBundledGhosttyThemes(this.getThemeDirectoryPath());

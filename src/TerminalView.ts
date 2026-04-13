@@ -132,7 +132,7 @@ export class TerminalView extends ItemView {
             fontWeightBold: typography.fontWeightBold,
             lineHeight: typography.lineHeight,
             letterSpacing: typography.letterSpacing,
-            customGlyphs: true,
+            customGlyphs: !settings.compatibilityMode,
             allowTransparency: false,
             minimumContrastRatio: 4.5,
             theme: this.getVisibleCursorTheme(this.currentTheme),
@@ -895,6 +895,7 @@ export class TerminalView extends ItemView {
         this.terminal.options.fontWeightBold = typography.fontWeightBold;
         this.terminal.options.lineHeight = typography.lineHeight;
         this.terminal.options.letterSpacing = typography.letterSpacing;
+        this.terminal.options.customGlyphs = !settings.compatibilityMode;
 
         void this.ensureTerminalFontReady(settings.fontFamily, settings.fontSize).then(() => {
             this.scheduleFit();
@@ -1047,14 +1048,19 @@ export class TerminalView extends ItemView {
             'monaspace',
             'iosevka'
         ];
-        const shouldTightenSpacing = compactFonts.some((fontName) => normalized.includes(fontName));
-        const shouldUseCompactTracking = shouldTightenSpacing && fontSize >= 15;
+        const isTerminalOptimizedFont = compactFonts.some((fontName) => normalized.includes(fontName));
+        const isWindowsStack = normalized.includes('consolas') || normalized.includes('cascadia');
+        const compatibilityMode = this.plugin.settings.compatibilityMode;
 
         return {
             fontWeight: '400',
-            fontWeightBold: shouldTightenSpacing ? '500' : '600',
-            lineHeight: shouldTightenSpacing ? 1.06 : 1.04,
-            letterSpacing: shouldUseCompactTracking ? -1 : 0
+            fontWeightBold: isTerminalOptimizedFont ? '500' : '600',
+            // Compatibility mode deliberately avoids compact tracking and uses roomier cell metrics.
+            // This reduces visible drift for Unicode logos, box-drawing glyphs, and mixed fallback fonts.
+            lineHeight: compatibilityMode
+                ? (isWindowsStack ? 1.14 : (isTerminalOptimizedFont ? 1.12 : 1.1))
+                : (isWindowsStack ? 1.08 : (isTerminalOptimizedFont ? 1.06 : 1.04)),
+            letterSpacing: compatibilityMode ? 0 : 0
         };
     }
 
