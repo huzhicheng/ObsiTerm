@@ -3,7 +3,7 @@
   <p><em>A terminal plugin for Obsidian that brings Claude Code, Codex, Gemini CLI, and other command-line tools into the right sidebar.</em></p>
   <p><a href="./README-ZH.md">简体中文</a></p>
   <p>
-    <img alt="version" src="https://img.shields.io/badge/version-v1.1.1-1677ff?style=flat-square">
+    <img alt="version" src="https://img.shields.io/badge/version-v1.1.2-1677ff?style=flat-square">
     <img alt="license" src="https://img.shields.io/badge/license-MIT-1677ff?style=flat-square">
     <img alt="platform" src="https://img.shields.io/badge/desktop-macOS%20%7C%20Windows-6f42c1?style=flat-square">
     <a href="https://github.com/Youket/ObsiTerm"><img alt="repo" src="https://img.shields.io/badge/fork-Youket%2FObsiTerm-f97316?style=flat-square"></a>
@@ -286,10 +286,10 @@ Example MCP config:
 
 A ready-to-edit example file is also included in this repository:
 
-- [examples/claude-code-obsiterm-mcp.json](/E:/Development/Github/ObsiTerm/examples/claude-code-obsiterm-mcp.json)
-- [.claude/settings.example.json](/E:/Development/Github/ObsiTerm/.claude/settings.example.json)
-- [.claude/README.md](/E:/Development/Github/ObsiTerm/.claude/README.md)
-- [AGENT-MCP-SETUP.md](/E:/Development/Github/ObsiTerm/AGENT-MCP-SETUP.md)
+- [examples/claude-code-obsiterm-mcp.json](./examples/claude-code-obsiterm-mcp.json)
+- [.claude/settings.example.json](./.claude/settings.example.json)
+- [.claude/README.md](./.claude/README.md)
+- [AGENT-MCP-SETUP.md](./AGENT-MCP-SETUP.md)
 
 Typical Claude Code setup on another machine:
 

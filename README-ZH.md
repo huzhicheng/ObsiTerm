@@ -3,7 +3,7 @@
   <p><em>运行在 Obsidian 右侧边栏中的终端插件，可直接配合 Claude Code、Codex、Gemini CLI 等命令行工具使用。</em></p>
   <p><a href="./README.md">English</a></p>
   <p>
-    <img alt="version" src="https://img.shields.io/badge/version-v1.1.1-1677ff?style=flat-square">
+    <img alt="version" src="https://img.shields.io/badge/version-v1.1.2-1677ff?style=flat-square">
     <img alt="license" src="https://img.shields.io/badge/license-MIT-1677ff?style=flat-square">
     <img alt="platform" src="https://img.shields.io/badge/desktop-macOS%20%7C%20Windows-6f42c1?style=flat-square">
     <a href="https://github.com/Youket/ObsiTerm"><img alt="repo" src="https://img.shields.io/badge/fork-Youket%2FObsiTerm-f97316?style=flat-square"></a>
@@ -253,10 +253,10 @@ MCP 配置示例：
 
 仓库里还提供了一个可直接修改的示例文件：
 
-- [examples/claude-code-obsiterm-mcp.json](/E:/Development/Github/ObsiTerm/examples/claude-code-obsiterm-mcp.json)
-- [.claude/settings.example.json](/E:/Development/Github/ObsiTerm/.claude/settings.example.json)
-- [.claude/README.md](/E:/Development/Github/ObsiTerm/.claude/README.md)
-- [AGENT-MCP-SETUP.md](/E:/Development/Github/ObsiTerm/AGENT-MCP-SETUP.md)
+- [examples/claude-code-obsiterm-mcp.json](./examples/claude-code-obsiterm-mcp.json)
+- [.claude/settings.example.json](./.claude/settings.example.json)
+- [.claude/README.md](./.claude/README.md)
+- [AGENT-MCP-SETUP.md](./AGENT-MCP-SETUP.md)
 
 另一台机器上接入 Claude Code 的常见步骤：
 
